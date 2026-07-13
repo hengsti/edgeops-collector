@@ -1,0 +1,70 @@
+{
+  "counter_initial_values": {
+    "ingest_messages_enqueued_total": 100000.0,
+    "ingest_messages_processed_total": 99980.0,
+    "ingest_sensor_messages_processed_total": 80000.0,
+    "ingest_status_messages_processed_total": 19980.0,
+    "ingest_queue_full_total": 0.0,
+    "ingest_transform_success_total": 99970.0,
+    "ingest_transform_failed_total": 10.0,
+    "influx_lines_written_total": 99970.0,
+    "influx_write_success_total": 10000.0,
+    "ingest_pipeline_duration_seconds_sum": 275.0,
+    "ingest_pipeline_duration_seconds_count": 99980.0
+  },
+  "counter_rates_per_second": {
+    "ingest_messages_enqueued_total": 5.0,
+    "ingest_messages_processed_total": 5.0,
+    "ingest_sensor_messages_processed_total": 4.0,
+    "ingest_status_messages_processed_total": 1.0,
+    "ingest_queue_full_total": 0.0,
+    "ingest_transform_success_total": 5.0,
+    "ingest_transform_failed_total": 0.0,
+    "influx_lines_written_total": 5.0,
+    "influx_write_success_total": 0.5,
+    "ingest_pipeline_duration_seconds_sum": 0.0125,
+    "ingest_pipeline_duration_seconds_count": 5.0
+  },
+  "services": {
+    "nanomq": {
+      "status": "running",
+      "health": "healthy",
+      "restart_count": 0
+    },
+    "ingestion-service": {
+      "status": "running",
+      "health": "healthy",
+      "restart_count": 0
+    },
+    "influxdb": {
+      "status": "running",
+      "health": "healthy",
+      "restart_count": 0
+    },
+    "telegraf": {
+      "status": "running",
+      "health": "healthy",
+      "restart_count": 0
+    },
+    "grafana": {
+      "status": "running",
+      "health": "healthy",
+      "restart_count": 0
+    },
+    "device-management": {
+      "status": "running",
+      "health": "healthy",
+      "restart_count": 0
+    },
+    "control-ui": {
+      "status": "running",
+      "health": "healthy",
+      "restart_count": 0
+    },
+    "homekit-api": {
+      "status": "running",
+      "health": "healthy",
+      "restart_count": 0
+    }
+  }
+}
