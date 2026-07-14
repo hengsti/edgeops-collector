@@ -1,0 +1,14 @@
+version: 1
+id: malformed-sensor-payload
+description: Malformed sensor messages increase transform failures.
+phases:
+  - id: malformed-payloads
+    duration_seconds: 300
+    effects:
+      counter_rate_multipliers:
+        ingest_transform_success_total: 0.7
+      counter_rate_additions:
+        ingest_transform_failed_total: 2
+      service_logs:
+        ingestion-service:
+          - ERROR malformed sensor payload rejected

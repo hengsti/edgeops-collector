@@ -6,19 +6,13 @@ services:
     image: edgeops-collector:0.1.0
     container_name: edgeops-collector
     restart: unless-stopped
-    env-file:
+    env_file:
       - .env
     ports:
       - "8095:8095"
-    group_add:
-      - "${DOCKER_GID}"
-    voluems:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./config:/app/config:ro
-    networks:
-      - smarthome
-
-networks:
-  smarthome:
-    external: true
-    name: ${SMARTHOME_NETWORK_NAME:-smarthome-stack_default}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8095/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
