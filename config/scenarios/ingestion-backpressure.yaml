@@ -1,0 +1,17 @@
+version: 1
+id: ingestion-backpressure
+description: The ingestion queue grows because consumers cannot keep up with producers.
+phases:
+  - id: overloaded
+    duration_seconds: 300
+    effects:
+      counter_rate_multipliers:
+        ingest_messages_enqueued_total: 3
+        ingest_messages_processed_total: 0.4
+        ingest_sensor_messages_processed_total: 0.4
+        ingest_status_messages_processed_total: 0.4
+      counter_rate_additions:
+        ingest_queue_full_total: 1
+      service_logs:
+        ingestion-service:
+          - WARN queue backpressure detected

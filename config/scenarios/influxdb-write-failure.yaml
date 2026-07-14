@@ -1,0 +1,18 @@
+version: 1
+id: influxdb-write-failure
+description: InfluxDB becomes unhealthy and successful writes stop.
+phases:
+  - id: write-failure
+    duration_seconds: 300
+    effects:
+      counter_rate_multipliers:
+        influx_lines_written_total: 0
+        influx_write_success_total: 0
+      services:
+        influxdb:
+          status: running
+          health: unhealthy
+          restart_count: 0
+      service_logs:
+        influxdb:
+          - ERROR simulated write failure
