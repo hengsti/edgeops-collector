@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from edgeops_collector.config import CollectorMode
 
@@ -17,6 +17,10 @@ class CaptureMetadata(BaseModel):
     collector_mode: CollectorMode
     simulated: bool
     source_host: str
+    scenario_id: str | None = None
+    simulation_run_id: str | None = None
+    simulation_seed: int | None = None
+    simulation_phase: str | None = None
 
 
 class CollectorEnvelope[T](BaseModel):
@@ -50,6 +54,9 @@ class IngestionMetrics(BaseModel):
     ingest_pipeline_duration_seconds_count: float = Field(ge=0)
 
 
+INGESTION_METRIC_NAMES = frozenset(IngestionMetrics.model_fields)
+
+
 class ServiceState(BaseModel):
     service: str
     container_id: str | None = None
@@ -74,3 +81,30 @@ class DeviceState(BaseModel):
     fw_version: str | None = None
 
     raw: dict[str, object] = Field(default_factory=dict)
+
+
+class SimulationScenarioSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    description: str
+    phases: list[str]
+
+
+class SimulationRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scenario_id: str
+    seed: int | None = None
+    speed: float = Field(default=1.0, gt=0, le=100)
+
+
+class SimulationRunState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    scenario_id: str
+    seed: int
+    speed: float
+    started_at: datetime
+    phase: str
