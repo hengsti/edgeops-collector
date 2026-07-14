@@ -57,12 +57,7 @@ class DeviceReader:
 
         status_candidate = state.get("status", {})
 
-        status_data: dict[str, Any]
-
-        if isinstance(status_candidate, dict):
-            status_data = status_candidate
-        else:
-            status_data = {}
+        status_data: dict[str, Any] = status_candidate if isinstance(status_candidate, dict) else {}
 
         last_seen_raw = (
             state.get("last_seen") or state.get("time_iso") or status_data.get("time_iso")
