@@ -1,5 +1,9 @@
+import logging
+
 from edgeops_collector.backends.base import CollectorBackend
 from edgeops_collector.config import CollectorMode, Settings
+
+logger = logging.getLogger(__name__)
 
 
 def create_backend(settings: Settings) -> CollectorBackend:
@@ -28,11 +32,28 @@ def create_backend(settings: Settings) -> CollectorBackend:
 
         case CollectorMode.SIMULATION:
             from edgeops_collector.backends.simulation import SimulationBackend
-            from edgeops_collector.simulation.profile import load_profile
+            from edgeops_collector.simulation.profile import load_profile, validate_profile
+
+            profile = load_profile(settings.simulation_profile_path)
+            validate_profile(profile, settings)
+            logger.info(
+                "Loaded simulation profile from %s",
+                settings.simulation_profile_path.resolve(),
+            )
+
+            scenarios = None
+            if settings.simulation_runtime_enabled:
+                from edgeops_collector.simulation.scenario import ScenarioRepository
+
+                scenarios = ScenarioRepository.load(
+                    settings.simulation_scenario_path,
+                    allowed_services=settings.allowed_service_names,
+                )
 
             return SimulationBackend(
                 settings=settings,
-                profile=load_profile(settings.simulation_profile_path),
+                profile=profile,
+                scenarios=scenarios,
             )
 
         case _:
