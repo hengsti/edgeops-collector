@@ -1,4 +1,4 @@
-.PHONY: install run test lint format typecheck check docker-build docker-up docker-down
+.PHONY: install run test lint format typecheck compose-check check docker-build docker-up docker-down
 
 install:
 	uv sync --dev
@@ -21,7 +21,10 @@ format-check:
 typecheck:
 	uv run mypy src tests
 
-check: lint format-check typecheck test
+compose-check:
+	docker compose config --quiet
+
+check: lint format-check typecheck test compose-check
 
 docker-build:
 	docker compose build
