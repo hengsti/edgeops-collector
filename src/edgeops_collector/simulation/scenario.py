@@ -4,7 +4,7 @@ from typing import Annotated
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from edgeops_collector.schemas import INGESTION_METRIC_NAMES, SimulationScenarioSummary
+from edgeops_collector.schemas import INGESTION_COUNTER_NAMES, SimulationScenarioSummary
 from edgeops_collector.simulation.profile import SimulatedService
 
 NonNegativeFiniteFloat = Annotated[float, Field(ge=0, allow_inf_nan=False)]
@@ -29,7 +29,7 @@ class ScenarioEffects(BaseModel):
     @model_validator(mode="after")
     def validate_metric_names(self) -> "ScenarioEffects":
         supplied = set(self.counter_rate_multipliers) | set(self.counter_rate_additions)
-        unknown = sorted(supplied - INGESTION_METRIC_NAMES)
+        unknown = sorted(supplied - INGESTION_COUNTER_NAMES)
         if unknown:
             raise ValueError(f"unknown scenario metrics: {unknown}")
         return self
