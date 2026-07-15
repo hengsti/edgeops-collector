@@ -70,6 +70,7 @@ class SimulationBackend:
         self._last_tick = self._clock_origin
 
         self._counters = dict(profile.counter_initial_values)
+        self._queue_depth = profile.gauge_initial_values["ingest_queue_depth"]
 
     def _simulated_now(self) -> datetime:
         return _SIMULATION_EPOCH + timedelta(seconds=self._clock() - self._clock_origin)
@@ -102,6 +103,22 @@ class SimulationBackend:
             simulation_phase=active[1].id if active else None,
         )
 
+    def _influxdb_health(self) -> float:
+        active = self._run_phase()
+        service = self._profile.services["influxdb"]
+        if active:
+            service = active[1].effects.services.get("influxdb", service)
+        return 1.0 if service.health == "healthy" else 0.0
+
+    def _phase_started_at(self, run: ActiveRun, selected: ScenarioPhase) -> datetime:
+        elapsed_seconds = 0.0
+        for phase in run.scenario.phases:
+            if phase is selected:
+                break
+            elapsed_seconds += phase.duration_seconds / run.speed
+        phase_tick = run.started_tick + elapsed_seconds
+        return _SIMULATION_EPOCH + timedelta(seconds=phase_tick - self._clock_origin)
+
     def _advance_counters(self, now: float) -> None:
         interval_start = self._last_tick
         elapsed = max(0.0, now - interval_start)
@@ -112,6 +129,10 @@ class SimulationBackend:
         if run is None:
             segments.append((elapsed, ScenarioEffects()))
         else:
+            before_run = max(0.0, min(now, run.started_tick) - interval_start)
+            if before_run:
+                segments.append((before_run, ScenarioEffects()))
+
             run_end = run.started_tick
             phase_start = 0.0
             for phase in run.scenario.phases:
@@ -127,15 +148,14 @@ class SimulationBackend:
                 run_end = phase_ended_at
                 phase_start = phase_end
 
-            before_run = max(0.0, min(now, run.started_tick) - interval_start)
             after_run = max(0.0, now - max(interval_start, run_end))
-            if before_run:
-                segments.append((before_run, ScenarioEffects()))
             if after_run:
                 segments.append((after_run, ScenarioEffects()))
 
+        jitters: dict[str, float] = {}
         for metric, rate in self._profile.counter_rates_per_second.items():
             jitter = self._random.uniform(0.995, 1.005)
+            jitters[metric] = jitter
             increment = sum(
                 max(
                     0.0,
@@ -150,6 +170,37 @@ class SimulationBackend:
             )
             self._counters[metric] = self._counters.get(metric, 0.0) + increment
 
+        capacity = self._profile.gauge_initial_values["ingest_queue_capacity"]
+        for duration, effects in segments:
+            enqueued_rate = self._profile.counter_rates_per_second["ingest_messages_enqueued_total"]
+            processed_rate = self._profile.counter_rates_per_second[
+                "ingest_messages_processed_total"
+            ]
+            enqueued = max(
+                0.0,
+                (
+                    enqueued_rate
+                    * effects.counter_rate_multipliers.get("ingest_messages_enqueued_total", 1.0)
+                    + effects.counter_rate_additions.get("ingest_messages_enqueued_total", 0.0)
+                )
+                * duration
+                * jitters["ingest_messages_enqueued_total"],
+            )
+            processed = max(
+                0.0,
+                (
+                    processed_rate
+                    * effects.counter_rate_multipliers.get("ingest_messages_processed_total", 1.0)
+                    + effects.counter_rate_additions.get("ingest_messages_processed_total", 0.0)
+                )
+                * duration
+                * jitters["ingest_messages_processed_total"],
+            )
+            self._queue_depth = min(
+                capacity,
+                max(0.0, self._queue_depth + enqueued - processed),
+            )
+
         if run is not None and now >= run_end:
             self._active_run = None
 
@@ -163,7 +214,16 @@ class SimulationBackend:
         await self._tick()
 
         async with self._lock:
-            metrics = IngestionMetrics.model_validate(dict(self._counters))
+            metrics = IngestionMetrics.model_validate(
+                {
+                    **self._counters,
+                    "ingest_queue_depth": self._queue_depth,
+                    "ingest_queue_capacity": self._profile.gauge_initial_values[
+                        "ingest_queue_capacity"
+                    ],
+                    "influxdb_healthy": self._influxdb_health(),
+                }
+            )
 
         return CollectorEnvelope(
             metadata=self._metadata(),
@@ -252,15 +312,17 @@ class SimulationBackend:
 
         active = self._run_phase()
         device_effect = active[1].effects.device if active else None
+        now = self._simulated_now()
+        unavailable = device_effect is not None and not device_effect.available
+        last_seen = self._phase_started_at(*active) if active and unavailable else now
 
         return CollectorEnvelope(
             metadata=self._metadata(),
             data=DeviceState(
                 device_id=device_id,
                 available=device_effect.available if device_effect else True,
-                last_seen=self._simulated_now()
-                if device_effect is None or device_effect.available
-                else None,
+                last_seen=last_seen,
+                heartbeat_age_seconds=max(0.0, (now - last_seen).total_seconds()),
                 rssi_dbm=device_effect.rssi_dbm if device_effect else -51,
                 fw_version="0.0.6-simulated",
                 raw={
