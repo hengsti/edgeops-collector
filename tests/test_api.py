@@ -162,6 +162,12 @@ def test_scenario_lifecycle_and_provenance(scenario_settings: Settings) -> None:
             "malformed-sensor-payload",
             "missing-device-heartbeat",
         }
+        assert all(
+            len(scenario.phases) == 3
+            and scenario.phases[0] == "normal"
+            and scenario.phases[-1] == "recovery"
+            for scenario in scenarios
+        )
 
         start_response = scenario_client.post(
             "/v1/simulation/runs",
@@ -175,7 +181,8 @@ def test_scenario_lifecycle_and_provenance(scenario_settings: Settings) -> None:
             "/v1/devices/esp32-simulated-01", headers=read_headers
         )
         device = TypeAdapter(CollectorEnvelope[DeviceState]).validate_python(device_response.json())
-        assert device.data.available is False
+        assert device.data.available is True
+        assert device.metadata.simulation_phase == "normal"
         assert device.metadata.simulation_run_id == run.run_id
         assert device.metadata.scenario_id == "missing-device-heartbeat"
         assert device.metadata.simulation_seed == 7

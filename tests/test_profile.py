@@ -19,6 +19,7 @@ def test_profile_contains_required_metric_values() -> None:
     assert "ingest_messages_enqueued_total" in profile.counter_initial_values
 
     assert "ingest_messages_enqueued_total" in profile.counter_rates_per_second
+    assert profile.gauge_initial_values["ingest_queue_capacity"] > 0
 
 
 def test_profile_contains_ingestion_service() -> None:
@@ -37,6 +38,9 @@ def test_profile_contains_ingestion_service() -> None:
         ("counter_initial_values", ("set", "ingest_queue_full_total", -1.0)),
         ("counter_rates_per_second", ("set", "ingest_queue_full_total", float("inf"))),
         ("counter_rates_per_second", ("set", "ingest_queue_full_total", float("nan"))),
+        ("gauge_initial_values", ("remove", "ingest_queue_depth", None)),
+        ("gauge_initial_values", ("set", "ingest_queue_capacity", 0.0)),
+        ("gauge_initial_values", ("set", "influxdb_healthy", 2.0)),
     ],
 )
 def test_invalid_metric_contract_is_rejected(

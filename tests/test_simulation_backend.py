@@ -19,8 +19,14 @@ async def test_simulation_counters_are_monotonic(
 
     second = await simulation_backend.get_ingestion_metrics()
 
-    first_values = first.data.model_dump()
-    second_values = second.data.model_dump()
+    first_values = first.data.model_dump(
+        include={
+            name
+            for name in type(first.data).model_fields
+            if name.endswith(("_total", "_sum", "_count"))
+        }
+    )
+    second_values = second.data.model_dump(include=set(first_values))
     assert all(second_values[name] >= value for name, value in first_values.items())
 
 
@@ -30,8 +36,13 @@ async def test_concurrent_simulation_reads_remain_monotonic(
     results = await asyncio.gather(*(simulation_backend.get_ingestion_metrics() for _ in range(20)))
 
     for previous, current in zip(results, results[1:], strict=False):
-        previous_values = previous.data.model_dump()
-        current_values = current.data.model_dump()
+        counter_names = {
+            name
+            for name in type(previous.data).model_fields
+            if name.endswith(("_total", "_sum", "_count"))
+        }
+        previous_values = previous.data.model_dump(include=counter_names)
+        current_values = current.data.model_dump(include=counter_names)
         assert all(current_values[name] >= value for name, value in previous_values.items())
 
 

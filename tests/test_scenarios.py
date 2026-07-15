@@ -56,8 +56,8 @@ async def test_same_scenario_seed_and_time_are_deterministic(
 
     await first.start_run(request)
     await second.start_run(request)
-    first_clock.advance(2.5)
-    second_clock.advance(2.5)
+    first_clock.advance(62.5)
+    second_clock.advance(62.5)
 
     first_metrics = await first.get_ingestion_metrics()
     second_metrics = await second.get_ingestion_metrics()
@@ -96,7 +96,7 @@ async def test_ingestion_backpressure_accounts_for_elapsed_time_across_phase_bou
         final_metrics.data.ingest_messages_enqueued_total
         - initial_metrics.data.ingest_messages_enqueued_total
     )
-    assert 4_500 < delta < 4_600
+    assert 3_300 < delta < 3_400
 
 
 async def test_ingestion_backpressure_starts_at_run_boundary(
@@ -129,7 +129,7 @@ async def test_ingestion_backpressure_starts_at_run_boundary(
         final_metrics.data.ingest_messages_enqueued_total
         - initial_metrics.data.ingest_messages_enqueued_total
     )
-    assert 195 < delta < 205
+    assert 95 < delta < 105
 
 
 async def test_stopping_run_accounts_for_elapsed_active_phase(
@@ -164,7 +164,71 @@ async def test_stopping_run_accounts_for_elapsed_active_phase(
         final_metrics.data.ingest_messages_enqueued_total
         - initial_metrics.data.ingest_messages_enqueued_total
     )
-    assert 1_540 < delta < 1_560
+    assert 540 < delta < 560
+
+
+async def test_backpressure_exposes_queue_growth_and_recovery(
+    simulation_settings: Settings,
+) -> None:
+    root = Path(__file__).parent.parent
+    settings = simulation_settings.model_copy(
+        update={
+            "simulation_runtime_enabled": True,
+            "simulation_admin_api_key": SecretStr("admin-test-key"),
+            "simulation_scenario_path": root / "config" / "scenarios",
+        }
+    )
+    clock = FakeClock()
+    backend = build_scenario_backend(settings, clock)
+    await backend.start_run(
+        SimulationRunRequest(scenario_id="ingestion-backpressure", seed=42, speed=1)
+    )
+
+    clock.advance(130)
+    overloaded = await backend.get_ingestion_metrics()
+    clock.advance(180)
+    recovery = await backend.get_ingestion_metrics()
+
+    assert overloaded.metadata.simulation_phase == "overloaded"
+    assert overloaded.data.ingest_queue_depth > 20
+    assert recovery.metadata.simulation_phase == "recovery"
+    assert recovery.data.ingest_queue_depth < overloaded.data.ingest_queue_capacity
+
+
+async def test_write_failure_metrics_and_heartbeat_age(
+    simulation_settings: Settings,
+) -> None:
+    root = Path(__file__).parent.parent
+    settings = simulation_settings.model_copy(
+        update={
+            "simulation_runtime_enabled": True,
+            "simulation_admin_api_key": SecretStr("admin-test-key"),
+            "simulation_scenario_path": root / "config" / "scenarios",
+        }
+    )
+
+    write_clock = FakeClock()
+    write_backend = build_scenario_backend(settings, write_clock)
+    before = await write_backend.get_ingestion_metrics()
+    await write_backend.start_run(
+        SimulationRunRequest(scenario_id="influxdb-write-failure", seed=42, speed=1)
+    )
+    write_clock.advance(150)
+    during = await write_backend.get_ingestion_metrics()
+    assert during.metadata.simulation_phase == "write-failure"
+    assert during.data.influxdb_healthy == 0
+    assert during.data.influx_write_failed_total > before.data.influx_write_failed_total
+
+    heartbeat_clock = FakeClock()
+    heartbeat_backend = build_scenario_backend(settings, heartbeat_clock)
+    await heartbeat_backend.start_run(
+        SimulationRunRequest(scenario_id="missing-device-heartbeat", seed=42, speed=1)
+    )
+    heartbeat_clock.advance(150)
+    device = await heartbeat_backend.get_device(settings.simulation_device_id)
+    assert device.metadata.simulation_phase == "heartbeat-missing"
+    assert device.data.available is False
+    assert device.data.heartbeat_age_seconds == 30
 
 
 async def test_equal_fake_clock_progress_produces_equal_simulated_timestamps(

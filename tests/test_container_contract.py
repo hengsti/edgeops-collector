@@ -45,8 +45,12 @@ INGESTION_METRICS = {
     "ingest_transform_failed_total": 0,
     "influx_lines_written_total": 9,
     "influx_write_success_total": 9,
+    "influx_write_failed_total": 0,
     "ingest_pipeline_duration_seconds_sum": 1.5,
     "ingest_pipeline_duration_seconds_count": 9,
+    "ingest_queue_depth": 1,
+    "ingest_queue_capacity": 100,
+    "influxdb_healthy": 1,
 }
 
 
@@ -76,6 +80,7 @@ INGESTION_METRICS = {
                     "device_id": "esp32-simulated-01",
                     "available": True,
                     "last_seen": "2026-07-12T12:00:00Z",
+                    "heartbeat_age_seconds": 0,
                     "rssi_dbm": -55,
                     "fw_version": None,
                     "raw": {"sensor": "simulated"},
