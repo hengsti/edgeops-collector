@@ -9,6 +9,7 @@
     "ingest_transform_failed_total": 10.0,
     "influx_lines_written_total": 99970.0,
     "influx_write_success_total": 10000.0,
+    "influx_write_failed_total": 0.0,
     "ingest_pipeline_duration_seconds_sum": 275.0,
     "ingest_pipeline_duration_seconds_count": 99980.0
   },
@@ -22,8 +23,14 @@
     "ingest_transform_failed_total": 0.0,
     "influx_lines_written_total": 5.0,
     "influx_write_success_total": 0.5,
+    "influx_write_failed_total": 0.0,
     "ingest_pipeline_duration_seconds_sum": 0.0125,
     "ingest_pipeline_duration_seconds_count": 5.0
+  },
+  "gauge_initial_values": {
+    "ingest_queue_depth": 20.0,
+    "ingest_queue_capacity": 1000.0,
+    "influxdb_healthy": 1.0
   },
   "services": {
     "nanomq": {
