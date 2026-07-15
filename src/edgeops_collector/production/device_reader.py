@@ -87,11 +87,17 @@ class DeviceReader:
             rssi_dbm = int(rssi)
 
         fw_version = state.get("fw_version")
+        heartbeat_age_seconds = (
+            max(0.0, (datetime.now(UTC) - last_seen).total_seconds())
+            if last_seen is not None
+            else None
+        )
 
         return DeviceState(
             device_id=device_id,
             available=True,
             last_seen=last_seen,
+            heartbeat_age_seconds=heartbeat_age_seconds,
             rssi_dbm=rssi_dbm,
             fw_version=(str(fw_version) if fw_version is not None else None),
             raw=payload,
