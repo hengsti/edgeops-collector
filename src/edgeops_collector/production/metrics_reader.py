@@ -15,8 +15,12 @@ REQUIRED_METRICS = frozenset(
         "ingest_transform_failed_total",
         "influx_lines_written_total",
         "influx_write_success_total",
+        "influx_write_failed_total",
         "ingest_pipeline_duration_seconds_sum",
         "ingest_pipeline_duration_seconds_count",
+        "ingest_queue_depth",
+        "ingest_queue_capacity",
+        "influxdb_healthy",
     }
 )
 
