@@ -6,7 +6,7 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from edgeops_collector.config import Settings
-from edgeops_collector.schemas import INGESTION_METRIC_NAMES
+from edgeops_collector.schemas import INGESTION_COUNTER_NAMES, INGESTION_GAUGE_NAMES
 
 NonNegativeFiniteFloat = Annotated[float, Field(ge=0, allow_inf_nan=False)]
 
@@ -28,6 +28,7 @@ class SimulationProfile(BaseModel):
 
     counter_initial_values: dict[str, NonNegativeFiniteFloat]
     counter_rates_per_second: dict[str, NonNegativeFiniteFloat]
+    gauge_initial_values: dict[str, NonNegativeFiniteFloat]
     services: dict[str, SimulatedService]
 
     @model_validator(mode="after")
@@ -35,8 +36,8 @@ class SimulationProfile(BaseModel):
         for field_name in ("counter_initial_values", "counter_rates_per_second"):
             values = getattr(self, field_name)
             actual = set(values)
-            missing = sorted(INGESTION_METRIC_NAMES - actual)
-            extra = sorted(actual - INGESTION_METRIC_NAMES)
+            missing = sorted(INGESTION_COUNTER_NAMES - actual)
+            extra = sorted(actual - INGESTION_COUNTER_NAMES)
             if missing or extra:
                 details = []
                 if missing:
@@ -49,6 +50,29 @@ class SimulationProfile(BaseModel):
 
             if any(not isfinite(value) or value < 0 for value in values.values()):
                 raise ValueError(f"{field_name} values must be finite and nonnegative")
+
+        actual_gauges = set(self.gauge_initial_values)
+        missing_gauges = sorted(INGESTION_GAUGE_NAMES - actual_gauges)
+        extra_gauges = sorted(actual_gauges - INGESTION_GAUGE_NAMES)
+        if missing_gauges or extra_gauges:
+            details = []
+            if missing_gauges:
+                details.append(f"missing {missing_gauges}")
+            if extra_gauges:
+                details.append(f"unknown {extra_gauges}")
+            raise ValueError(
+                "gauge_initial_values must contain exactly supported metrics: " + "; ".join(details)
+            )
+
+        if self.gauge_initial_values["ingest_queue_capacity"] <= 0:
+            raise ValueError("ingest queue capacity must be greater than zero")
+        if (
+            self.gauge_initial_values["ingest_queue_depth"]
+            > self.gauge_initial_values["ingest_queue_capacity"]
+        ):
+            raise ValueError("ingest queue depth cannot exceed capacity")
+        if self.gauge_initial_values["influxdb_healthy"] > 1:
+            raise ValueError("influxdb_healthy must be between zero and one")
 
         if (
             self.counter_initial_values["ingest_messages_processed_total"]
