@@ -49,12 +49,23 @@ class IngestionMetrics(BaseModel):
 
     influx_lines_written_total: float = Field(ge=0)
     influx_write_success_total: float = Field(ge=0)
+    influx_write_failed_total: float = Field(ge=0)
 
     ingest_pipeline_duration_seconds_sum: float = Field(ge=0)
     ingest_pipeline_duration_seconds_count: float = Field(ge=0)
 
+    ingest_queue_depth: float = Field(ge=0)
+    ingest_queue_capacity: float = Field(gt=0)
+    influxdb_healthy: float = Field(ge=0, le=1)
+
 
 INGESTION_METRIC_NAMES = frozenset(IngestionMetrics.model_fields)
+INGESTION_COUNTER_NAMES = frozenset(
+    name
+    for name in INGESTION_METRIC_NAMES
+    if name.endswith("_total") or name.endswith("_sum") or name.endswith("_count")
+)
+INGESTION_GAUGE_NAMES = INGESTION_METRIC_NAMES - INGESTION_COUNTER_NAMES
 
 
 class ServiceState(BaseModel):
@@ -77,6 +88,7 @@ class DeviceState(BaseModel):
     available: bool
 
     last_seen: datetime | None = None
+    heartbeat_age_seconds: float | None = Field(default=None, ge=0)
     rssi_dbm: int | None = None
     fw_version: str | None = None
 
