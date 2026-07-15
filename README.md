@@ -66,7 +66,7 @@ Every `/v1/*` request requires an `X-EdgeOps-Key` header. Read endpoints use `CO
 | --- | --- | --- | --- | --- |
 | `GET` | `/health` | None | 200 | Process health and version |
 | `GET` | `/v1/meta` | Read | 200 | Mode, source host, and allowlisted services |
-| `GET` | `/v1/metrics/ingestion` | Read | 200 | Ingestion counters |
+| `GET` | `/v1/metrics/ingestion` | Read | 200 | Ingestion counters and gauges |
 | `GET` | `/v1/services` | Read | 200 | All allowlisted service states |
 | `GET` | `/v1/services/{service}` | Read | 200 or 404 | One service state |
 | `GET` | `/v1/services/{service}/logs` | Read | 200 or 404 | Bounded simulated logs |
@@ -100,7 +100,41 @@ Data endpoints return a Pydantic-validated envelope:
 }
 ```
 
-Scenario provenance fields are populated while a run is active.
+Scenario provenance fields are populated throughout an active run, including its normal baseline,
+incident, and recovery windows. Samples outside a scenario run have null provenance and represent
+the normal class.
+
+Ingestion telemetry includes monotonic counters, the current queue depth and capacity,
+`influx_write_failed_total`, and the binary `influxdb_healthy` gauge. Device telemetry includes
+`heartbeat_age_seconds`; unlike `last_seen`, this is directly suitable as a numeric model feature.
+
+## Feature extraction and training rows
+
+Create model features from two consecutive ingestion envelopes. Counter rates, ratios, and the
+pipeline-duration average are calculated from deltas, so a histogram average is
+`Δduration_sum / Δduration_count` rather than the lifetime average:
+
+```python
+from edgeops_collector.features import build_training_record, extract_features
+
+features = extract_features(previous_snapshot, current_snapshot, window_seconds=10)
+record = build_training_record(current_snapshot, features)
+```
+
+`extract_features` treats a negative counter delta as a reset and uses zero for that counter's
+window. It also emits the current queue depth, capacity, utilization ratio, and InfluxDB health.
+`build_training_record` attaches the timestamp, run ID, seed, scenario, phase, stable string label,
+and numeric `label_id`. The stable mapping is:
+
+```python
+{
+    "normal": 0,
+    "influxdb-write-failure": 1,
+    "ingestion-backpressure": 2,
+    "malformed-sensor-payload": 3,
+    "missing-device-heartbeat": 4,
+}
+```
 
 ## Run incident scenarios
 
@@ -136,6 +170,12 @@ curl -X DELETE -H "X-EdgeOps-Key: YOUR_ADMIN_KEY" \
 
 Set `COLLECTOR_SIMULATION_RUNTIME_ENABLED=false` to omit every simulation-control route.
 
+Every checked-in scenario lasts 420 virtual seconds: 120 seconds of `normal`, 180 seconds of its
+incident-specific phase, and 120 seconds of `recovery`. Recovery remains associated with the
+scenario ID and is deliberately not relabeled as normal. The backpressure recovery phase drains
+the residual queue, and heartbeat age continues increasing from the start of a missing-heartbeat
+phase until the device recovers.
+
 ## Configuration reference
 
 All collector settings use the `COLLECTOR_` prefix. Unknown prefixed variables fail startup and their values are not included in the error.
@@ -157,7 +197,16 @@ All collector settings use the `COLLECTOR_` prefix. Unknown prefixed variables f
 
 Production-only ingestion URLs are also available as `COLLECTOR_INGESTION_METRICS_URL` and `COLLECTOR_INGESTION_CACHE_URL`.
 
-The simulation profile must define exactly every `IngestionMetrics` counter in both initial values and rates. Values must be finite and nonnegative, processed messages may not initially exceed enqueued messages, and profile services must exactly match the configured allowlist. Invalid JSON, missing files, invalid counters, and missing or unknown services fail before the API serves requests.
+The simulation profile must define exactly every `IngestionMetrics` counter in both initial values
+and rates, plus every gauge in `gauge_initial_values`. Values must be finite and nonnegative, queue
+capacity must be positive, queue depth cannot exceed capacity, processed messages may not initially
+exceed enqueued messages, and profile services must exactly match the configured allowlist. Invalid
+JSON, missing files, invalid metrics, and missing or unknown services fail before the API serves
+requests.
+
+Production mode now expects the upstream Prometheus endpoint to expose all ingestion fields,
+including queue depth/capacity, failed writes, and InfluxDB health. Missing fields fail closed with
+an invalid-upstream-response error instead of silently manufacturing AI inputs.
 
 ## Quality checks
 
