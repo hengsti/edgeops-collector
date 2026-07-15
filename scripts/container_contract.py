@@ -105,8 +105,12 @@ def assert_response_contract(path: str, payload: Any) -> None:
             "ingest_transform_failed_total",
             "influx_lines_written_total",
             "influx_write_success_total",
+            "influx_write_failed_total",
             "ingest_pipeline_duration_seconds_sum",
             "ingest_pipeline_duration_seconds_count",
+            "ingest_queue_depth",
+            "ingest_queue_capacity",
+            "influxdb_healthy",
         )
         assert all(
             metric in data
@@ -115,6 +119,9 @@ def assert_response_contract(path: str, payload: Any) -> None:
             and data[metric] >= 0
             for metric in metrics
         )
+        assert data["ingest_queue_capacity"] > 0
+        assert data["ingest_queue_depth"] <= data["ingest_queue_capacity"]
+        assert data["influxdb_healthy"] <= 1
     elif path == "/v1/services":
         data = _assert_envelope(payload)
         assert isinstance(data, list)
@@ -142,6 +149,7 @@ def assert_response_contract(path: str, payload: Any) -> None:
             "device_id",
             "available",
             "last_seen",
+            "heartbeat_age_seconds",
             "rssi_dbm",
             "fw_version",
             "raw",
@@ -149,6 +157,11 @@ def assert_response_contract(path: str, payload: Any) -> None:
         assert isinstance(data["device_id"], str)
         assert isinstance(data["available"], bool)
         assert _is_string_or_none(data["last_seen"])
+        assert data["heartbeat_age_seconds"] is None or (
+            isinstance(data["heartbeat_age_seconds"], (int, float))
+            and not isinstance(data["heartbeat_age_seconds"], bool)
+            and data["heartbeat_age_seconds"] >= 0
+        )
         assert data["rssi_dbm"] is None or (
             isinstance(data["rssi_dbm"], int) and not isinstance(data["rssi_dbm"], bool)
         )
