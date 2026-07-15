@@ -2,9 +2,17 @@ version: 1
 id: missing-device-heartbeat
 description: The simulated device stops reporting heartbeats.
 phases:
+  - id: normal
+    duration_seconds: 120
   - id: heartbeat-missing
-    duration_seconds: 300
+    duration_seconds: 180
     effects:
       device:
         available: false
         rssi_dbm: null
+  - id: recovery
+    duration_seconds: 120
+    effects:
+      device:
+        available: true
+        rssi_dbm: -51

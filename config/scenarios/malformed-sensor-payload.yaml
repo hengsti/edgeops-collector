@@ -2,8 +2,10 @@ version: 1
 id: malformed-sensor-payload
 description: Malformed sensor messages increase transform failures.
 phases:
+  - id: normal
+    duration_seconds: 120
   - id: malformed-payloads
-    duration_seconds: 300
+    duration_seconds: 180
     effects:
       counter_rate_multipliers:
         ingest_transform_success_total: 0.7
@@ -12,3 +14,5 @@ phases:
       service_logs:
         ingestion-service:
           - ERROR malformed sensor payload rejected
+  - id: recovery
+    duration_seconds: 120
