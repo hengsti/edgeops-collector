@@ -180,19 +180,76 @@ async def test_backpressure_exposes_queue_growth_and_recovery(
     )
     clock = FakeClock()
     backend = build_scenario_backend(settings, clock)
+    before = await backend.get_ingestion_metrics()
     await backend.start_run(
         SimulationRunRequest(scenario_id="ingestion-backpressure", seed=42, speed=1)
     )
 
     clock.advance(130)
     overloaded = await backend.get_ingestion_metrics()
-    clock.advance(180)
+    clock.advance(170)
+    recovery_start = await backend.get_ingestion_metrics()
+    clock.advance(10)
     recovery = await backend.get_ingestion_metrics()
 
     assert overloaded.metadata.simulation_phase == "overloaded"
     assert overloaded.data.ingest_queue_depth > 20
+    assert overloaded.data.ingest_event_queue_full_total > before.data.ingest_event_queue_full_total
+    assert overloaded.data.ingest_wal_queue_full_total > before.data.ingest_wal_queue_full_total
+    assert recovery_start.metadata.simulation_phase == "recovery"
     assert recovery.metadata.simulation_phase == "recovery"
     assert recovery.data.ingest_queue_depth < overloaded.data.ingest_queue_capacity
+    assert (
+        recovery.data.ingest_event_queue_full_total
+        == recovery_start.data.ingest_event_queue_full_total
+    )
+    assert (
+        recovery.data.ingest_wal_queue_full_total == recovery_start.data.ingest_wal_queue_full_total
+    )
+
+
+async def test_malformed_payload_exposes_stage_specific_failures(
+    simulation_settings: Settings,
+) -> None:
+    root = Path(__file__).parent.parent
+    settings = simulation_settings.model_copy(
+        update={
+            "simulation_runtime_enabled": True,
+            "simulation_admin_api_key": SecretStr("admin-test-key"),
+            "simulation_scenario_path": root / "config" / "scenarios",
+        }
+    )
+    clock = FakeClock()
+    backend = build_scenario_backend(settings, clock)
+    before = await backend.get_ingestion_metrics()
+    await backend.start_run(
+        SimulationRunRequest(
+            scenario_id="malformed-sensor-payload",
+            seed=42,
+            speed=1,
+        )
+    )
+
+    clock.advance(150)
+    during = await backend.get_ingestion_metrics()
+
+    assert during.metadata.simulation_phase == "malformed-payloads"
+    assert (
+        during.data.ingest_incoming_invalid_json_total
+        > before.data.ingest_incoming_invalid_json_total
+    )
+    assert (
+        during.data.ingest_validate_raw_failed_total > before.data.ingest_validate_raw_failed_total
+    )
+    assert (
+        during.data.ingest_transform_deserialize_failed_total
+        > before.data.ingest_transform_deserialize_failed_total
+    )
+    assert (
+        during.data.ingest_validate_business_failed_total
+        > before.data.ingest_validate_business_failed_total
+    )
+    assert during.data.dlq_messages_published_total > before.data.dlq_messages_published_total
 
 
 async def test_write_failure_metrics_and_heartbeat_age(
@@ -217,7 +274,10 @@ async def test_write_failure_metrics_and_heartbeat_age(
     during = await write_backend.get_ingestion_metrics()
     assert during.metadata.simulation_phase == "write-failure"
     assert during.data.influxdb_healthy == 0
+    assert during.data.wal_forwarder_retry_outage_active == 1
     assert during.data.influx_write_failed_total > before.data.influx_write_failed_total
+    assert during.data.wal_forwarder_retry_total > before.data.wal_forwarder_retry_total
+    assert during.data.wal_forwarder_drop_total > before.data.wal_forwarder_drop_total
 
     heartbeat_clock = FakeClock()
     heartbeat_backend = build_scenario_backend(settings, heartbeat_clock)

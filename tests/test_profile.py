@@ -35,11 +35,21 @@ def test_profile_contains_ingestion_service() -> None:
     [
         ("counter_initial_values", ("remove", "influx_write_success_total", None)),
         ("counter_rates_per_second", ("add", "unexpected_total", 1.0)),
-        ("counter_initial_values", ("set", "ingest_queue_full_total", -1.0)),
-        ("counter_rates_per_second", ("set", "ingest_queue_full_total", float("inf"))),
-        ("counter_rates_per_second", ("set", "ingest_queue_full_total", float("nan"))),
+        ("counter_initial_values", ("set", "ingest_wal_queue_full_total", -1.0)),
+        (
+            "counter_rates_per_second",
+            ("set", "ingest_wal_queue_full_total", float("inf")),
+        ),
+        (
+            "counter_rates_per_second",
+            ("set", "ingest_wal_queue_full_total", float("nan")),
+        ),
         ("gauge_initial_values", ("remove", "ingest_queue_depth", None)),
         ("gauge_initial_values", ("set", "ingest_queue_capacity", 0.0)),
+        (
+            "gauge_initial_values",
+            ("set", "wal_forwarder_retry_outage_active", 2.0),
+        ),
         ("gauge_initial_values", ("set", "influxdb_healthy", 2.0)),
     ],
 )

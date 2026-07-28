@@ -8,7 +8,12 @@ scripts_package = types.ModuleType("scripts")
 scripts_package.__path__ = [str(Path(__file__).parent.parent / "scripts")]
 sys.modules["scripts"] = scripts_package
 
-from scripts.container_contract import assert_response_contract  # noqa: E402
+from edgeops_collector.schemas import IngestionMetrics  # noqa: E402
+from scripts.container_contract import (  # noqa: E402
+    INGESTION_COUNTER_METRICS,
+    INGESTION_GAUGE_METRICS,
+    assert_response_contract,
+)
 
 
 def envelope(data: object) -> dict[str, object]:
@@ -36,22 +41,22 @@ SERVICE = {
 }
 
 INGESTION_METRICS = {
-    "ingest_messages_enqueued_total": 10,
-    "ingest_messages_processed_total": 9,
-    "ingest_sensor_messages_processed_total": 8,
-    "ingest_status_messages_processed_total": 1,
-    "ingest_queue_full_total": 0,
-    "ingest_transform_success_total": 9,
-    "ingest_transform_failed_total": 0,
-    "influx_lines_written_total": 9,
-    "influx_write_success_total": 9,
-    "influx_write_failed_total": 0,
-    "ingest_pipeline_duration_seconds_sum": 1.5,
-    "ingest_pipeline_duration_seconds_count": 9,
+    **{metric: 0 for metric in INGESTION_COUNTER_METRICS},
+    **{metric: 0 for metric in INGESTION_GAUGE_METRICS},
     "ingest_queue_depth": 1,
     "ingest_queue_capacity": 100,
-    "influxdb_healthy": 1,
 }
+
+
+def test_container_metric_list_matches_schema() -> None:
+    required = set(INGESTION_COUNTER_METRICS + INGESTION_GAUGE_METRICS)
+    schema_fields = set(IngestionMetrics.model_fields) - {
+        "ingest_queue_depth",
+        "ingest_queue_capacity",
+    }
+
+    assert required == schema_fields
+    assert "ingest_queue_full_total" not in required
 
 
 @pytest.mark.parametrize(
@@ -107,7 +112,7 @@ def test_response_contract_rejects_malformed_endpoint_data() -> None:
     payload = envelope(INGESTION_METRICS)
     data = payload["data"]
     assert isinstance(data, dict)
-    del data["ingest_queue_full_total"]
+    del data["ingest_wal_queue_full_total"]
 
     with pytest.raises(AssertionError):
         assert_response_contract("/v1/metrics/ingestion", payload)
