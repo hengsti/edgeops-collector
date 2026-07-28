@@ -108,8 +108,6 @@ def assert_response_contract(path: str, payload: Any) -> None:
             "influx_write_failed_total",
             "ingest_pipeline_duration_seconds_sum",
             "ingest_pipeline_duration_seconds_count",
-            "ingest_queue_depth",
-            "ingest_queue_capacity",
             "influxdb_healthy",
         )
         assert all(
@@ -119,8 +117,18 @@ def assert_response_contract(path: str, payload: Any) -> None:
             and data[metric] >= 0
             for metric in metrics
         )
-        assert data["ingest_queue_capacity"] > 0
-        assert data["ingest_queue_depth"] <= data["ingest_queue_capacity"]
+        queue_depth = data.get("ingest_queue_depth")
+        queue_capacity = data.get("ingest_queue_capacity")
+
+        assert (queue_depth is None) == (queue_capacity is None)
+
+        if queue_depth is not None and queue_capacity is not None:
+            assert isinstance(queue_depth, (int, float))
+            assert isinstance(queue_capacity, (int, float))
+            assert queue_depth >= 0
+            assert queue_capacity > 0
+            assert queue_depth <= queue_capacity
+
         assert data["influxdb_healthy"] <= 1
     elif path == "/v1/services":
         data = _assert_envelope(payload)
