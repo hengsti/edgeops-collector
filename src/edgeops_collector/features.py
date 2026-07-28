@@ -71,30 +71,59 @@ def extract_features(
     lines_written = delta["influx_lines_written_total"]
     duration_sum = delta["ingest_pipeline_duration_seconds_sum"]
     duration_count = delta["ingest_pipeline_duration_seconds_count"]
-    queue_depth = float(current_data["ingest_queue_depth"])
-    queue_capacity = float(current_data["ingest_queue_capacity"])
 
-    return {
+    features = {
         **rates,
         "queue_growth_rate": (enqueued - processed) / window_seconds,
-        "processing_ratio": safe_divide(processed, enqueued, default=1.0),
-        "queue_full_ratio": safe_divide(delta["ingest_queue_full_total"], enqueued),
+        "processing_ratio": safe_divide(
+            processed,
+            enqueued,
+            default=1.0,
+        ),
+        "queue_full_ratio": safe_divide(
+            delta["ingest_queue_full_total"],
+            enqueued,
+        ),
         "transform_failure_ratio": safe_divide(
             transform_failed,
             transform_success + transform_failed,
         ),
-        "persistence_ratio": safe_divide(lines_written, transform_success, default=1.0),
-        "pipeline_duration_average_seconds": safe_divide(duration_sum, duration_count),
+        "persistence_ratio": safe_divide(
+            lines_written,
+            transform_success,
+            default=1.0,
+        ),
+        "pipeline_duration_average_seconds": safe_divide(
+            duration_sum,
+            duration_count,
+        ),
         "sensor_message_ratio": safe_divide(
             delta["ingest_sensor_messages_processed_total"],
             delta["ingest_sensor_messages_processed_total"]
             + delta["ingest_status_messages_processed_total"],
         ),
-        "queue_depth": queue_depth,
-        "queue_capacity": queue_capacity,
-        "queue_utilization_ratio": safe_divide(queue_depth, queue_capacity),
         "influxdb_healthy": float(current_data["influxdb_healthy"]),
     }
+
+    queue_depth = current_data.get("ingest_queue_depth")
+    queue_capacity = current_data.get("ingest_queue_capacity")
+
+    if queue_depth is not None and queue_capacity is not None:
+        depth = float(queue_depth)
+        capacity = float(queue_capacity)
+
+        features.update(
+            {
+                "queue_depth": depth,
+                "queue_capacity": capacity,
+                "queue_utilization_ratio": safe_divide(
+                    depth,
+                    capacity,
+                ),
+            }
+        )
+
+    return features
 
 
 def build_training_record(
