@@ -110,6 +110,11 @@ class SimulationBackend:
             service = active[1].effects.services.get("influxdb", service)
         return 1.0 if service.health == "healthy" else 0.0
 
+    def _wal_retry_outage_active(self) -> float:
+        if self._influxdb_health() == 0.0:
+            return 1.0
+        return self._profile.gauge_initial_values["wal_forwarder_retry_outage_active"]
+
     def _phase_started_at(self, run: ActiveRun, selected: ScenarioPhase) -> datetime:
         elapsed_seconds = 0.0
         for phase in run.scenario.phases:
@@ -221,6 +226,7 @@ class SimulationBackend:
                     "ingest_queue_capacity": self._profile.gauge_initial_values[
                         "ingest_queue_capacity"
                     ],
+                    "wal_forwarder_retry_outage_active": (self._wal_retry_outage_active()),
                     "influxdb_healthy": self._influxdb_health(),
                 }
             )
