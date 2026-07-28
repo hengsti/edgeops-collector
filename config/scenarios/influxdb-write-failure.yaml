@@ -10,8 +10,14 @@ phases:
       counter_rate_multipliers:
         influx_lines_written_total: 0
         influx_write_success_total: 0
+        influx_write_duration_seconds_sum: 0
+        influx_write_duration_seconds_count: 0
+        wal_forwarder_committed_total: 0
       counter_rate_additions:
         influx_write_failed_total: 0.5
+        wal_forwarder_retry_total: 0.5
+        wal_forwarder_commit_retry_total: 0.1
+        wal_forwarder_drop_total: 0.05
       services:
         influxdb:
           status: running

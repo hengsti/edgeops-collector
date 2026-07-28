@@ -1,6 +1,6 @@
 version: 1
 id: malformed-sensor-payload
-description: Malformed sensor messages increase transform failures.
+description: Malformed sensor messages exercise decode, validation, transform, and DLQ metrics.
 phases:
   - id: normal
     duration_seconds: 120
@@ -8,9 +8,25 @@ phases:
     duration_seconds: 180
     effects:
       counter_rate_multipliers:
+        ingest_decode_success_total: 0.6
+        ingest_validate_raw_success_total: 0.7
         ingest_transform_success_total: 0.7
+        ingest_validate_business_success_total: 0.8
+        ingest_cache_updates_total: 0.7
+        ingest_messages_enqueued_total: 0.7
+        ingest_messages_processed_total: 0.7
+        ingest_sensor_messages_processed_total: 0.7
+        ingest_status_messages_processed_total: 0.7
       counter_rate_additions:
-        ingest_transform_failed_total: 2
+        ingest_incoming_oversized_total: 0.5
+        ingest_incoming_non_utf8_total: 0.5
+        ingest_incoming_invalid_json_total: 1
+        ingest_validate_raw_failed_total: 1
+        ingest_validate_raw_ignored_total: 0.5
+        ingest_transform_failed_total: 1
+        ingest_transform_deserialize_failed_total: 0.5
+        ingest_validate_business_failed_total: 1
+        dlq_messages_published_total: 2
       service_logs:
         ingestion-service:
           - ERROR malformed sensor payload rejected

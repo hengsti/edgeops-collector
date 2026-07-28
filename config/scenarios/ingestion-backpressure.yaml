@@ -12,8 +12,10 @@ phases:
         ingest_messages_processed_total: 0.4
         ingest_sensor_messages_processed_total: 0.4
         ingest_status_messages_processed_total: 0.4
+        ingest_persist_duration_seconds_sum: 5
       counter_rate_additions:
-        ingest_queue_full_total: 1
+        ingest_event_queue_full_total: 0.5
+        ingest_wal_queue_full_total: 0.5
       service_logs:
         ingestion-service:
           - WARN queue backpressure detected
@@ -27,5 +29,7 @@ phases:
         ingest_transform_success_total: 2
         influx_lines_written_total: 2
         influx_write_success_total: 2
+        ingest_persist_duration_seconds_sum: 2
+        ingest_persist_duration_seconds_count: 2
         ingest_pipeline_duration_seconds_sum: 2
         ingest_pipeline_duration_seconds_count: 2
