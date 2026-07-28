@@ -104,9 +104,16 @@ Scenario provenance fields are populated throughout an active run, including its
 incident, and recovery windows. Samples outside a scenario run have null provenance and represent
 the normal class.
 
-Ingestion telemetry includes monotonic counters, the current queue depth and capacity,
-`influx_write_failed_total`, and the binary `influxdb_healthy` gauge. Device telemetry includes
-`heartbeat_age_seconds`; unlike `last_seen`, this is directly suitable as a numeric model feature.
+Ingestion telemetry follows the ingestion service's documented stage contract. It includes
+stage-specific input/decode, validation, transform, WAL persistence, DLQ, pipeline, Influx, and WAL
+forwarder counters plus selected histogram sums/counts. In particular,
+`ingest_event_queue_full_total` and `ingest_wal_queue_full_total` remain separate; the collector no
+longer exposes the ambiguous combined `ingest_queue_full_total`.
+
+The API also exposes `wal_forwarder_retry_outage_active` and the derived binary
+`influxdb_healthy` gauge. Production queue depth and capacity remain `null` because the current
+ingestion service does not export those gauges; simulation supplies them. Device telemetry includes
+`heartbeat_age_seconds`, which is directly suitable as a numeric model feature.
 
 ## Feature extraction and training rows
 
@@ -122,7 +129,8 @@ record = build_training_record(current_snapshot, features)
 ```
 
 `extract_features` treats a negative counter delta as a reset and uses zero for that counter's
-window. It also emits the current queue depth, capacity, utilization ratio, and InfluxDB health.
+window. It emits stage-specific failure ratios, duration averages, the current queue depth,
+capacity and utilization ratio, WAL outage state, and InfluxDB health.
 `build_training_record` attaches the timestamp, run ID, seed, scenario, phase, stable string label,
 and numeric `label_id`. The stable mapping is:
 
@@ -204,9 +212,12 @@ exceed enqueued messages, and profile services must exactly match the configured
 JSON, missing files, invalid metrics, and missing or unknown services fail before the API serves
 requests.
 
-Production mode now expects the upstream Prometheus endpoint to expose all ingestion fields,
-including queue depth/capacity, failed writes, and InfluxDB health. Missing fields fail closed with
-an invalid-upstream-response error instead of silently manufacturing AI inputs.
+Production mode expects the upstream Prometheus endpoint to expose the required successful-event
+denominators and histogram samples documented by the ingestion service. Failure-only counters that
+the Rust recorder has not emitted yet default to zero. Queue depth/capacity remain absent in
+production, while `influxdb_healthy` is derived from
+`wal_forwarder_retry_outage_active`. Missing required fields fail closed with an
+invalid-upstream-response error instead of silently manufacturing AI inputs.
 
 ## Quality checks
 
