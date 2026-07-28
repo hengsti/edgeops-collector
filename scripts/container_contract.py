@@ -13,6 +13,69 @@ ADMIN_KEY = os.environ.get(
     "COLLECTOR_SIMULATION_ADMIN_API_KEY", "replace-with-a-different-long-random-value"
 )
 
+INGESTION_COUNTER_METRICS = (
+    "mqtt_messages_received_total",
+    "ingest_event_queue_full_total",
+    "ingest_decode_success_total",
+    "ingest_incoming_oversized_total",
+    "ingest_incoming_non_utf8_total",
+    "ingest_incoming_invalid_json_total",
+    "ingest_decode_payload_bytes_sum",
+    "ingest_decode_payload_bytes_count",
+    "ingest_decode_duration_seconds_sum",
+    "ingest_decode_duration_seconds_count",
+    "ingest_validate_raw_success_total",
+    "ingest_validate_raw_ignored_total",
+    "ingest_validate_raw_failed_total",
+    "ingest_validate_raw_duration_seconds_sum",
+    "ingest_validate_raw_duration_seconds_count",
+    "ingest_transform_attempt_total",
+    "ingest_transform_success_total",
+    "ingest_transform_failed_total",
+    "ingest_transform_deserialize_failed_total",
+    "ingest_transform_ignored_total",
+    "ingest_transform_duration_seconds_sum",
+    "ingest_transform_duration_seconds_count",
+    "ingest_validate_business_success_total",
+    "ingest_validate_business_failed_total",
+    "ingest_validate_business_duration_seconds_sum",
+    "ingest_validate_business_duration_seconds_count",
+    "ingest_cache_updates_total",
+    "ingest_messages_enqueued_total",
+    "ingest_wal_queue_full_total",
+    "ingest_queue_closed_total",
+    "ingest_durability_ack_failed_total",
+    "ingest_persist_duration_seconds_sum",
+    "ingest_persist_duration_seconds_count",
+    "dlq_messages_published_total",
+    "dlq_publish_errors_total",
+    "ingest_dlq_publish_duration_seconds_sum",
+    "ingest_dlq_publish_duration_seconds_count",
+    "ingest_messages_processed_total",
+    "ingest_sensor_messages_processed_total",
+    "ingest_status_messages_processed_total",
+    "influx_lines_written_total",
+    "influx_write_success_total",
+    "influx_write_failed_total",
+    "influx_write_duration_seconds_sum",
+    "influx_write_duration_seconds_count",
+    "ingest_pipeline_duration_seconds_sum",
+    "ingest_pipeline_duration_seconds_count",
+    "wal_forwarder_committed_total",
+    "wal_forwarder_drop_total",
+    "wal_forwarder_retry_total",
+    "wal_forwarder_commit_retry_total",
+    "wal_forwarder_retry_outage_seconds_sum",
+    "wal_forwarder_retry_outage_seconds_count",
+    "wal_subscription_corrupt_skipped_total",
+    "wal_writer_fatal_total",
+)
+
+INGESTION_GAUGE_METRICS = (
+    "wal_forwarder_retry_outage_active",
+    "influxdb_healthy",
+)
+
 
 def request(
     method: str,
@@ -95,27 +158,12 @@ def assert_response_contract(path: str, payload: Any) -> None:
     elif path == "/v1/metrics/ingestion":
         data = _assert_envelope(payload)
         assert isinstance(data, dict)
-        metrics = (
-            "ingest_messages_enqueued_total",
-            "ingest_messages_processed_total",
-            "ingest_sensor_messages_processed_total",
-            "ingest_status_messages_processed_total",
-            "ingest_queue_full_total",
-            "ingest_transform_success_total",
-            "ingest_transform_failed_total",
-            "influx_lines_written_total",
-            "influx_write_success_total",
-            "influx_write_failed_total",
-            "ingest_pipeline_duration_seconds_sum",
-            "ingest_pipeline_duration_seconds_count",
-            "influxdb_healthy",
-        )
         assert all(
             metric in data
             and isinstance(data[metric], (int, float))
             and not isinstance(data[metric], bool)
             and data[metric] >= 0
-            for metric in metrics
+            for metric in INGESTION_COUNTER_METRICS + INGESTION_GAUGE_METRICS
         )
         queue_depth = data.get("ingest_queue_depth")
         queue_capacity = data.get("ingest_queue_capacity")
@@ -129,6 +177,7 @@ def assert_response_contract(path: str, payload: Any) -> None:
             assert queue_capacity > 0
             assert queue_depth <= queue_capacity
 
+        assert data["wal_forwarder_retry_outage_active"] <= 1
         assert data["influxdb_healthy"] <= 1
     elif path == "/v1/services":
         data = _assert_envelope(payload)
