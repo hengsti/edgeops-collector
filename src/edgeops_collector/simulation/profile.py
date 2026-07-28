@@ -71,8 +71,12 @@ class SimulationProfile(BaseModel):
             > self.gauge_initial_values["ingest_queue_capacity"]
         ):
             raise ValueError("ingest queue depth cannot exceed capacity")
-        if self.gauge_initial_values["influxdb_healthy"] > 1:
-            raise ValueError("influxdb_healthy must be between zero and one")
+        for metric in (
+            "wal_forwarder_retry_outage_active",
+            "influxdb_healthy",
+        ):
+            if self.gauge_initial_values[metric] > 1:
+                raise ValueError(f"{metric} must be between zero and one")
 
         if (
             self.counter_initial_values["ingest_messages_processed_total"]
