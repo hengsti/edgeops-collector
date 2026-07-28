@@ -4,20 +4,9 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, Final
 
-COUNTER_KEYS: Final = (
-    "ingest_messages_enqueued_total",
-    "ingest_messages_processed_total",
-    "ingest_sensor_messages_processed_total",
-    "ingest_status_messages_processed_total",
-    "ingest_queue_full_total",
-    "ingest_transform_success_total",
-    "ingest_transform_failed_total",
-    "influx_lines_written_total",
-    "influx_write_success_total",
-    "influx_write_failed_total",
-    "ingest_pipeline_duration_seconds_sum",
-    "ingest_pipeline_duration_seconds_count",
-)
+from edgeops_collector.schemas import INGESTION_COUNTER_NAMES
+
+COUNTER_KEYS: Final = tuple(sorted(INGESTION_COUNTER_NAMES))
 
 LABELS: Final = {
     "normal": 0,
@@ -68,9 +57,31 @@ def extract_features(
     processed = delta["ingest_messages_processed_total"]
     transform_success = delta["ingest_transform_success_total"]
     transform_failed = delta["ingest_transform_failed_total"]
+    transform_deserialize_failed = delta["ingest_transform_deserialize_failed_total"]
+    transform_attempts = delta["ingest_transform_attempt_total"]
     lines_written = delta["influx_lines_written_total"]
-    duration_sum = delta["ingest_pipeline_duration_seconds_sum"]
-    duration_count = delta["ingest_pipeline_duration_seconds_count"]
+    decode_failures = (
+        delta["ingest_incoming_oversized_total"]
+        + delta["ingest_incoming_non_utf8_total"]
+        + delta["ingest_incoming_invalid_json_total"]
+    )
+    decode_inputs = delta["mqtt_messages_received_total"] + delta["ingest_event_queue_full_total"]
+    raw_validation_outcomes = (
+        delta["ingest_validate_raw_success_total"]
+        + delta["ingest_validate_raw_ignored_total"]
+        + delta["ingest_validate_raw_failed_total"]
+    )
+    business_validation_outcomes = (
+        delta["ingest_validate_business_success_total"]
+        + delta["ingest_validate_business_failed_total"]
+    )
+    wal_enqueue_attempts = (
+        enqueued + delta["ingest_wal_queue_full_total"] + delta["ingest_queue_closed_total"]
+    )
+    dlq_attempts = delta["dlq_messages_published_total"] + delta["dlq_publish_errors_total"]
+    wal_terminal_outcomes = (
+        delta["wal_forwarder_committed_total"] + delta["wal_forwarder_drop_total"]
+    )
 
     features = {
         **rates,
@@ -80,27 +91,102 @@ def extract_features(
             enqueued,
             default=1.0,
         ),
-        "queue_full_ratio": safe_divide(
-            delta["ingest_queue_full_total"],
-            enqueued,
+        "event_queue_drop_ratio": safe_divide(
+            delta["ingest_event_queue_full_total"],
+            decode_inputs,
+        ),
+        "wal_queue_full_ratio": safe_divide(
+            delta["ingest_wal_queue_full_total"],
+            wal_enqueue_attempts,
+        ),
+        "decode_failure_ratio": safe_divide(
+            decode_failures,
+            decode_inputs,
+        ),
+        "raw_validation_failure_ratio": safe_divide(
+            delta["ingest_validate_raw_failed_total"],
+            raw_validation_outcomes,
+        ),
+        "raw_validation_ignored_ratio": safe_divide(
+            delta["ingest_validate_raw_ignored_total"],
+            raw_validation_outcomes,
+        ),
+        "business_validation_failure_ratio": safe_divide(
+            delta["ingest_validate_business_failed_total"],
+            business_validation_outcomes,
+        ),
+        "transform_deserialize_failure_ratio": safe_divide(
+            transform_deserialize_failed,
+            transform_attempts,
         ),
         "transform_failure_ratio": safe_divide(
-            transform_failed,
-            transform_success + transform_failed,
+            transform_failed + transform_deserialize_failed,
+            transform_attempts,
         ),
         "persistence_ratio": safe_divide(
             lines_written,
             transform_success,
             default=1.0,
         ),
+        "influx_write_failure_ratio": safe_divide(
+            delta["influx_write_failed_total"],
+            delta["influx_write_success_total"] + delta["influx_write_failed_total"],
+        ),
+        "dlq_publish_failure_ratio": safe_divide(
+            delta["dlq_publish_errors_total"],
+            dlq_attempts,
+        ),
+        "wal_drop_ratio": safe_divide(
+            delta["wal_forwarder_drop_total"],
+            wal_terminal_outcomes,
+        ),
+        "decode_payload_average_bytes": safe_divide(
+            delta["ingest_decode_payload_bytes_sum"],
+            delta["ingest_decode_payload_bytes_count"],
+        ),
+        "decode_duration_average_seconds": safe_divide(
+            delta["ingest_decode_duration_seconds_sum"],
+            delta["ingest_decode_duration_seconds_count"],
+        ),
+        "raw_validation_duration_average_seconds": safe_divide(
+            delta["ingest_validate_raw_duration_seconds_sum"],
+            delta["ingest_validate_raw_duration_seconds_count"],
+        ),
+        "transform_duration_average_seconds": safe_divide(
+            delta["ingest_transform_duration_seconds_sum"],
+            delta["ingest_transform_duration_seconds_count"],
+        ),
+        "business_validation_duration_average_seconds": safe_divide(
+            delta["ingest_validate_business_duration_seconds_sum"],
+            delta["ingest_validate_business_duration_seconds_count"],
+        ),
+        "persist_duration_average_seconds": safe_divide(
+            delta["ingest_persist_duration_seconds_sum"],
+            delta["ingest_persist_duration_seconds_count"],
+        ),
+        "dlq_publish_duration_average_seconds": safe_divide(
+            delta["ingest_dlq_publish_duration_seconds_sum"],
+            delta["ingest_dlq_publish_duration_seconds_count"],
+        ),
         "pipeline_duration_average_seconds": safe_divide(
-            duration_sum,
-            duration_count,
+            delta["ingest_pipeline_duration_seconds_sum"],
+            delta["ingest_pipeline_duration_seconds_count"],
+        ),
+        "influx_write_duration_average_seconds": safe_divide(
+            delta["influx_write_duration_seconds_sum"],
+            delta["influx_write_duration_seconds_count"],
+        ),
+        "wal_retry_outage_duration_average_seconds": safe_divide(
+            delta["wal_forwarder_retry_outage_seconds_sum"],
+            delta["wal_forwarder_retry_outage_seconds_count"],
         ),
         "sensor_message_ratio": safe_divide(
             delta["ingest_sensor_messages_processed_total"],
             delta["ingest_sensor_messages_processed_total"]
             + delta["ingest_status_messages_processed_total"],
+        ),
+        "wal_forwarder_retry_outage_active": float(
+            current_data["wal_forwarder_retry_outage_active"]
         ),
         "influxdb_healthy": float(current_data["influxdb_healthy"]),
     }
