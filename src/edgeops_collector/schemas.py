@@ -54,8 +54,11 @@ class IngestionMetrics(BaseModel):
     ingest_pipeline_duration_seconds_sum: float = Field(ge=0)
     ingest_pipeline_duration_seconds_count: float = Field(ge=0)
 
-    ingest_queue_depth: float = Field(ge=0)
-    ingest_queue_capacity: float = Field(gt=0)
+    # The WAL-based ingestion service does not export queue gauges.
+    # Simulation mode continues to supply both values.
+    ingest_queue_depth: float | None = Field(default=None, ge=0)
+    ingest_queue_capacity: float | None = Field(default=None, gt=0)
+
     influxdb_healthy: float = Field(ge=0, le=1)
 
 
