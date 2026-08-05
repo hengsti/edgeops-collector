@@ -1,7 +1,7 @@
 [project]
 name = "edgeops-collector"
 version = "0.1.0"
-description = "Configurable production and simulation collector for EdgeOps AI"
+description = "Production telemetry collector for EdgeOps AI"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -9,9 +9,8 @@ dependencies = [
     "fastapi>=0.115,<1",
     "httpx>=0.27,<1",
     "prometheus-client>=0.21,<1",
-    "pyyaml>=6.0,<7",
     "pydantic-settings>=2.6,<3",
-    "uvicorn[standard]>=0.32,<1",
+    "uvicorn>=0.32,<1",
 ]
 
 [dependency-groups]
@@ -23,7 +22,6 @@ dev = [
     "pytest-asyncio>=0.24,<1",
     "ruff>=0.8,<1",
     "types-docker>=7.1,<8",
-    "types-pyyaml>=6.0,<7",
 ]
 
 [project.scripts]
