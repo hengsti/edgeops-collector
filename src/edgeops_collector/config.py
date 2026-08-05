@@ -1,15 +1,9 @@
 import os
-from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-
-class CollectorMode(StrEnum):
-    PRODUCTION = "production"
-    SIMULATION = "simulation"
 
 
 class Settings(BaseSettings):
@@ -18,8 +12,6 @@ class Settings(BaseSettings):
         env_prefix="COLLECTOR_",
         extra="ignore",
     )
-
-    mode: CollectorMode = CollectorMode.SIMULATION
 
     api_key: SecretStr
 
@@ -47,43 +39,11 @@ class Settings(BaseSettings):
         default=1000, ge=1, le=5000, description="Maximum number of log lines to keep in memory"
     )
 
-    simulation_seed: int = 42
-
-    simulation_profile_path: Path = Path("config/simulation-profile.json")
-
-    simulation_device_id: str = "esp32-simulated-01"
-
-    simulation_runtime_enabled: bool = False
-    simulation_admin_api_key: SecretStr | None = None
-    simulation_scenario_path: Path = Path("config/scenarios")
-
-    @model_validator(mode="after")
-    def validate_simulation_admin_configuration(self) -> "Settings":
-        if not self.simulation_runtime_enabled:
-            return self
-
-        if self.mode is not CollectorMode.SIMULATION:
-            raise ValueError("simulation runtime control requires simulation mode")
-
-        if self.simulation_admin_api_key is None:
-            raise ValueError(
-                "COLLECTOR_SIMULATION_ADMIN_API_KEY is required when runtime control is enabled"
-            )
-
-        if secrets_equal(self.api_key, self.simulation_admin_api_key):
-            raise ValueError("collector and simulation admin API keys must be different")
-
-        return self
-
     @property
     def allowed_service_names(self) -> frozenset[str]:
         return frozenset(
             service.strip() for service in self.allowed_services.split(",") if service.strip()
         )
-
-
-def secrets_equal(left: SecretStr, right: SecretStr) -> bool:
-    return left.get_secret_value() == right.get_secret_value()
 
 
 def _dotenv_keys(path: Path) -> set[str]:
