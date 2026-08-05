@@ -1,228 +1,157 @@
 from collections.abc import Iterator
-from pathlib import Path
-from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from pydantic import SecretStr, TypeAdapter
 
-from edgeops_collector.backends.factory import create_backend
-from edgeops_collector.backends.simulation import SimulationBackend
 from edgeops_collector.config import Settings
+from edgeops_collector.errors import ResourceNotFoundError
 from edgeops_collector.main import create_app
 from edgeops_collector.schemas import (
+    INGESTION_COUNTER_NAMES,
+    CaptureMetadata,
     CollectorEnvelope,
-    CollectorMeta,
     DeviceState,
     IngestionMetrics,
     ServiceLogs,
     ServiceState,
-    SimulationRunState,
-    SimulationScenarioSummary,
-)
-from edgeops_collector.simulation.profile import load_profile
-
-READ_ROUTES = (
-    "/v1/meta",
-    "/v1/metrics/ingestion",
-    "/v1/services",
-    "/v1/services/ingestion-service",
-    "/v1/services/ingestion-service/logs",
-    "/v1/devices/esp32-simulated-01",
 )
 
 
-@pytest.fixture
-def client(simulation_settings: Settings) -> Iterator[TestClient]:
-    with TestClient(create_app(settings=simulation_settings)) as test_client:
-        yield test_client
+class FakeProductionBackend:
+    def __init__(self) -> None:
+        self.closed = False
 
+    def metadata(self) -> CaptureMetadata:
+        return CaptureMetadata(source_host="production-test")
 
-def test_health_does_not_require_api_key(client: TestClient) -> None:
-    response = client.get("/health")
+    async def get_ingestion_metrics(self) -> CollectorEnvelope[IngestionMetrics]:
+        values: dict[str, float | None] = {name: 0.0 for name in INGESTION_COUNTER_NAMES}
+        values.update(
+            {
+                "ingest_queue_depth": None,
+                "ingest_queue_capacity": None,
+                "wal_forwarder_retry_outage_active": 0.0,
+                "influxdb_healthy": 1.0,
+            }
+        )
+        return CollectorEnvelope(
+            metadata=self.metadata(), data=IngestionMetrics.model_validate(values)
+        )
 
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok", "version": "0.1.0"}
+    async def get_services(self) -> CollectorEnvelope[list[ServiceState]]:
+        return CollectorEnvelope(
+            metadata=self.metadata(), data=[self._service("ingestion-service")]
+        )
 
+    def _service(self, service: str) -> ServiceState:
+        if service != "ingestion-service":
+            raise ResourceNotFoundError(f"Service is not allowlisted: {service}")
+        return ServiceState(service=service, status="running", health="healthy", restart_count=0)
 
-@pytest.mark.parametrize("route", READ_ROUTES)
-@pytest.mark.parametrize("headers", [{}, {"X-EdgeOps-Key": "incorrect-key"}])
-def test_versioned_routes_require_valid_api_key(
-    client: TestClient, route: str, headers: dict[str, str]
-) -> None:
-    response = client.get(route, headers=headers)
+    async def get_service(self, service: str) -> CollectorEnvelope[ServiceState]:
+        return CollectorEnvelope(metadata=self.metadata(), data=self._service(service))
 
-    assert response.status_code == 401
+    async def get_service_logs(
+        self, service: str, *, tail: int, contains: str | None
+    ) -> CollectorEnvelope[ServiceLogs]:
+        self._service(service)
+        lines = ["service healthy"]
+        if contains:
+            lines = [line for line in lines if contains.casefold() in line.casefold()]
+        return CollectorEnvelope(
+            metadata=self.metadata(), data=ServiceLogs(service=service, lines=lines[-tail:])
+        )
 
-
-def test_meta_endpoint_returns_configured_values(
-    client: TestClient, simulation_settings: Settings
-) -> None:
-    response = client.get("/v1/meta", headers={"X-EdgeOps-Key": "test-key"})
-
-    assert response.status_code == 200
-    meta = CollectorMeta.model_validate(response.json())
-    assert meta.mode.value == "simulation"
-    assert meta.source_host == "test-host"
-    assert meta.allowed_services == sorted(simulation_settings.allowed_service_names)
-
-
-def test_all_data_routes_return_typed_responses(client: TestClient) -> None:
-    headers = {"X-EdgeOps-Key": "test-key"}
-    expectations: tuple[tuple[str, TypeAdapter[Any]], ...] = (
-        ("/v1/metrics/ingestion", TypeAdapter(CollectorEnvelope[IngestionMetrics])),
-        ("/v1/services", TypeAdapter(CollectorEnvelope[list[ServiceState]])),
-        ("/v1/services/ingestion-service", TypeAdapter(CollectorEnvelope[ServiceState])),
-        ("/v1/services/ingestion-service/logs", TypeAdapter(CollectorEnvelope[ServiceLogs])),
-        ("/v1/devices/esp32-simulated-01", TypeAdapter(CollectorEnvelope[DeviceState])),
-    )
-
-    for route, adapter in expectations:
-        response = client.get(route, headers=headers)
-        assert response.status_code == 200
-        adapter.validate_python(response.json())
-
-
-def test_log_tail_contains_and_query_limits(client: TestClient) -> None:
-    headers = {"X-EdgeOps-Key": "test-key"}
-    matching = client.get(
-        "/v1/services/ingestion-service/logs?tail=1&contains=healthy", headers=headers
-    )
-    filtered = client.get(
-        "/v1/services/ingestion-service/logs?tail=1&contains=absent", headers=headers
-    )
-
-    assert len(matching.json()["data"]["lines"]) == 1
-    assert filtered.json()["data"]["lines"] == []
-    assert (
-        client.get("/v1/services/ingestion-service/logs?tail=0", headers=headers).status_code == 422
-    )
-    assert (
-        client.get("/v1/services/ingestion-service/logs?tail=501", headers=headers).status_code
-        == 422
-    )
-
-
-@pytest.mark.parametrize("route", ["/v1/services/not-allowed", "/v1/devices/unknown-device"])
-def test_unknown_resources_return_404(client: TestClient, route: str) -> None:
-    response = client.get(route, headers={"X-EdgeOps-Key": "test-key"})
-
-    assert response.status_code == 404
-
-
-class ClosingSimulationBackend(SimulationBackend):
-    closed: bool = False
+    async def get_device(self, device_id: str) -> CollectorEnvelope[DeviceState]:
+        if device_id != "esp32-production-01":
+            raise ResourceNotFoundError(f"Device not found: {device_id}")
+        return CollectorEnvelope(
+            metadata=self.metadata(),
+            data=DeviceState(device_id=device_id, available=True, heartbeat_age_seconds=1),
+        )
 
     async def close(self) -> None:
         self.closed = True
 
 
-def test_application_lifespan_closes_backend(simulation_settings: Settings) -> None:
-    prepared = create_backend(simulation_settings)
-    assert isinstance(prepared, SimulationBackend)
-    backend = ClosingSimulationBackend(
-        settings=simulation_settings,
-        profile=load_profile(simulation_settings.simulation_profile_path),
+@pytest.fixture
+def settings() -> Settings:
+    return Settings(
+        api_key="production-test-key",
+        source_host="production-test",
+        allowed_services="ingestion-service",
     )
-
-    with TestClient(create_app(settings=simulation_settings, backend=backend)):
-        assert backend.closed is False
-
-    assert backend.closed is True
 
 
 @pytest.fixture
-def scenario_settings(simulation_settings: Settings) -> Settings:
-    root = Path(__file__).parent.parent
-    return simulation_settings.model_copy(
-        update={
-            "simulation_runtime_enabled": True,
-            "simulation_admin_api_key": SecretStr("admin-test-key"),
-            "simulation_scenario_path": root / "config" / "scenarios",
-        }
-    )
+def backend() -> FakeProductionBackend:
+    return FakeProductionBackend()
 
 
-def test_scenario_lifecycle_and_provenance(scenario_settings: Settings) -> None:
-    headers = {"X-EdgeOps-Key": "admin-test-key"}
-    read_headers = {"X-EdgeOps-Key": "test-key"}
-    with TestClient(create_app(settings=scenario_settings)) as scenario_client:
-        assert (
-            scenario_client.get("/v1/simulation/scenarios", headers=read_headers).status_code == 401
-        )
+@pytest.fixture
+def client(settings: Settings, backend: FakeProductionBackend) -> Iterator[TestClient]:
+    with TestClient(create_app(settings=settings, backend=backend)) as test_client:
+        yield test_client
 
-        scenarios_response = scenario_client.get("/v1/simulation/scenarios", headers=headers)
-        assert scenarios_response.status_code == 200
-        scenarios = TypeAdapter(list[SimulationScenarioSummary]).validate_python(
-            scenarios_response.json()
-        )
-        assert {scenario.id for scenario in scenarios} == {
-            "ingestion-backpressure",
-            "influxdb-write-failure",
-            "malformed-sensor-payload",
-            "missing-device-heartbeat",
-        }
-        assert all(
-            len(scenario.phases) == 3
-            and scenario.phases[0] == "normal"
-            and scenario.phases[-1] == "recovery"
-            for scenario in scenarios
-        )
 
-        start_response = scenario_client.post(
-            "/v1/simulation/runs",
-            headers=headers,
-            json={"scenario_id": "missing-device-heartbeat", "seed": 7, "speed": 1},
-        )
-        assert start_response.status_code == 201
-        run = SimulationRunState.model_validate(start_response.json())
+def test_health_is_public_and_read_routes_require_key(client: TestClient) -> None:
+    assert client.get("/health").status_code == 200
+    assert client.get("/v1/meta").status_code == 401
+    assert client.get("/v1/meta", headers={"X-EdgeOps-Key": "wrong"}).status_code == 401
 
-        device_response = scenario_client.get(
-            "/v1/devices/esp32-simulated-01", headers=read_headers
-        )
-        device = TypeAdapter(CollectorEnvelope[DeviceState]).validate_python(device_response.json())
-        assert device.data.available is True
-        assert device.metadata.simulation_phase == "normal"
-        assert device.metadata.simulation_run_id == run.run_id
-        assert device.metadata.scenario_id == "missing-device-heartbeat"
-        assert device.metadata.simulation_seed == 7
 
-        assert (
-            scenario_client.get("/v1/simulation/runs/current", headers=headers).status_code == 200
-        )
-        assert (
-            scenario_client.delete("/v1/simulation/runs/current", headers=headers).status_code
-            == 200
-        )
-        second_stop = scenario_client.delete("/v1/simulation/runs/current", headers=headers)
-        assert second_stop.status_code == 200
-        assert second_stop.json() is None
+def test_meta_and_envelopes_have_fixed_production_provenance(client: TestClient) -> None:
+    headers = {"X-EdgeOps-Key": "production-test-key"}
+    meta = client.get("/v1/meta", headers=headers)
+    metrics = client.get("/v1/metrics/ingestion", headers=headers)
+    assert meta.status_code == 200
+    assert meta.json()["mode"] == "production"
+    metadata = metrics.json()["metadata"]
+    assert metadata == {
+        **metadata,
+        "collector_mode": "production",
+        "simulated": False,
+        "scenario_id": None,
+        "simulation_run_id": None,
+        "simulation_seed": None,
+        "simulation_phase": None,
+    }
 
 
 @pytest.mark.parametrize(
-    ("method", "route"),
+    "path",
     [
-        ("GET", "/v1/simulation/scenarios"),
-        ("POST", "/v1/simulation/runs"),
-        ("GET", "/v1/simulation/runs/current"),
-        ("DELETE", "/v1/simulation/runs/current"),
+        "/v1/simulation/scenarios",
+        "/v1/simulation/runs",
+        "/v1/simulation/runs/current",
     ],
 )
-def test_all_scenario_routes_require_admin_key(
-    scenario_settings: Settings, method: str, route: str
-) -> None:
-    with TestClient(create_app(settings=scenario_settings)) as scenario_client:
-        response = scenario_client.request(method, route)
-
-    assert response.status_code == 401
+def test_simulation_routes_are_unregistered(client: TestClient, path: str) -> None:
+    headers = {"X-EdgeOps-Key": "production-test-key"}
+    assert client.get(path, headers=headers).status_code == 404
+    assert client.post(path, headers=headers, json={}).status_code == 404
+    assert client.delete(path, headers=headers).status_code == 404
 
 
-def test_unknown_scenario_returns_404(scenario_settings: Settings) -> None:
-    with TestClient(create_app(settings=scenario_settings)) as scenario_client:
-        response = scenario_client.post(
-            "/v1/simulation/runs",
-            headers={"X-EdgeOps-Key": "admin-test-key"},
-            json={"scenario_id": "unknown"},
-        )
+def test_read_contract_and_limits(client: TestClient) -> None:
+    headers = {"X-EdgeOps-Key": "production-test-key"}
+    assert client.get("/v1/services", headers=headers).status_code == 200
+    assert client.get("/v1/services/ingestion-service", headers=headers).status_code == 200
+    assert (
+        client.get(
+            "/v1/services/ingestion-service/logs?tail=1&contains=healthy", headers=headers
+        ).status_code
+        == 200
+    )
+    assert client.get("/v1/services/not-allowed", headers=headers).status_code == 404
+    assert client.get("/v1/devices/esp32-production-01", headers=headers).status_code == 200
+    assert client.get("/v1/devices/unknown", headers=headers).status_code == 404
+    assert (
+        client.get("/v1/services/ingestion-service/logs?tail=0", headers=headers).status_code == 422
+    )
 
-    assert response.status_code == 404
+
+def test_lifespan_closes_backend(settings: Settings, backend: FakeProductionBackend) -> None:
+    with TestClient(create_app(settings=settings, backend=backend)):
+        assert backend.closed is False
+    assert backend.closed is True

@@ -20,13 +20,13 @@ def envelope(data: object) -> dict[str, object]:
     return {
         "metadata": {
             "captured_at": "2026-07-12T12:00:00Z",
-            "collector_mode": "simulation",
-            "simulated": True,
-            "source_host": "local-simulation",
+            "collector_mode": "production",
+            "simulated": False,
+            "source_host": "rpi-smarthome",
             "scenario_id": None,
-            "simulation_run_id": "run-123",
-            "simulation_seed": 42,
-            "simulation_phase": "steady",
+            "simulation_run_id": None,
+            "simulation_seed": None,
+            "simulation_phase": None,
         },
         "data": data,
     }
@@ -66,8 +66,8 @@ def test_container_metric_list_matches_schema() -> None:
             "/v1/meta",
             {
                 "version": "0.1.0",
-                "mode": "simulation",
-                "source_host": "local-simulation",
+                "mode": "production",
+                "source_host": "rpi-smarthome",
                 "allowed_services": ["ingestion-service"],
             },
         ),
