@@ -6,20 +6,14 @@ import uvicorn
 from fastapi import (
     Depends,
     FastAPI,
-    HTTPException,
     Query,
     Request,
 )
 from fastapi.responses import JSONResponse
 
 from edgeops_collector import __version__
-from edgeops_collector.backends.base import (
-    CollectorBackend,
-    SimulationControlBackend,
-)
-from edgeops_collector.backends.factory import (
-    create_backend,
-)
+from edgeops_collector.backends.base import CollectorBackend
+from edgeops_collector.backends.production import ProductionBackend
 from edgeops_collector.config import (
     Settings,
     get_settings,
@@ -29,6 +23,9 @@ from edgeops_collector.errors import (
     ResourceNotFoundError,
     UpstreamUnavailableError,
 )
+from edgeops_collector.production.device_reader import DeviceReader
+from edgeops_collector.production.docker_reader import DockerReader
+from edgeops_collector.production.metrics_reader import MetricsReader
 from edgeops_collector.schemas import (
     CollectorEnvelope,
     CollectorMeta,
@@ -36,14 +33,8 @@ from edgeops_collector.schemas import (
     IngestionMetrics,
     ServiceLogs,
     ServiceState,
-    SimulationRunRequest,
-    SimulationRunState,
-    SimulationScenarioSummary,
 )
-from edgeops_collector.security import (
-    build_api_key_dependency,
-    build_secret_dependency,
-)
+from edgeops_collector.security import build_api_key_dependency
 
 
 def create_app(
@@ -53,7 +44,21 @@ def create_app(
 ) -> FastAPI:
     resolved_settings = settings or get_settings()
 
-    resolved_backend = backend if backend is not None else create_backend(resolved_settings)
+    resolved_backend = backend or ProductionBackend(
+        settings=resolved_settings,
+        metrics_reader=MetricsReader(
+            url=resolved_settings.ingestion_metrics_url,
+            timeout_seconds=resolved_settings.http_timeout_seconds,
+        ),
+        docker_reader=DockerReader(
+            allowed_services=resolved_settings.allowed_service_names,
+            max_log_lines=resolved_settings.max_log_lines,
+        ),
+        device_reader=DeviceReader(
+            base_url=resolved_settings.ingestion_cache_url,
+            timeout_seconds=resolved_settings.http_timeout_seconds,
+        ),
+    )
 
     require_api_key = build_api_key_dependency(resolved_settings)
 
@@ -123,7 +128,7 @@ def create_app(
     async def meta() -> CollectorMeta:
         return CollectorMeta(
             version=__version__,
-            mode=resolved_settings.mode,
+            mode="production",
             source_host=resolved_settings.source_host,
             allowed_services=sorted(resolved_settings.allowed_service_names),
         )
@@ -183,52 +188,6 @@ def create_app(
         device_id: str,
     ) -> CollectorEnvelope[DeviceState]:
         return await resolved_backend.get_device(device_id)
-
-    if resolved_settings.simulation_runtime_enabled:
-        admin_key = resolved_settings.simulation_admin_api_key
-        if admin_key is None or not isinstance(resolved_backend, SimulationControlBackend):
-            raise ValueError("Simulation runtime backend is not configured correctly")
-
-        require_admin_key = build_secret_dependency(admin_key, "simulation admin")
-
-        @app.get(
-            "/v1/simulation/scenarios",
-            dependencies=[Depends(require_admin_key)],
-            response_model=list[SimulationScenarioSummary],
-        )
-        async def simulation_scenarios() -> list[SimulationScenarioSummary]:
-            return await resolved_backend.list_scenarios()
-
-        @app.post(
-            "/v1/simulation/runs",
-            status_code=201,
-            dependencies=[Depends(require_admin_key)],
-            response_model=SimulationRunState,
-        )
-        async def start_simulation_run(request: SimulationRunRequest) -> SimulationRunState:
-            try:
-                return await resolved_backend.start_run(request)
-            except ValueError as exc:
-                raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-        @app.get(
-            "/v1/simulation/runs/current",
-            dependencies=[Depends(require_admin_key)],
-            response_model=SimulationRunState,
-        )
-        async def current_simulation_run() -> SimulationRunState:
-            run_state = await resolved_backend.get_current_run()
-            if run_state is None:
-                raise ResourceNotFoundError("No simulation run is active")
-            return run_state
-
-        @app.delete(
-            "/v1/simulation/runs/current",
-            dependencies=[Depends(require_admin_key)],
-            response_model=SimulationRunState | None,
-        )
-        async def stop_simulation_run() -> SimulationRunState | None:
-            return await resolved_backend.stop_run()
 
     return app
 
