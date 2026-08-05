@@ -9,9 +9,7 @@ from urllib.parse import parse_qs
 
 BASE_URL = os.environ.get("COLLECTOR_TEST_URL", "http://127.0.0.1:8095")
 READ_KEY = os.environ.get("COLLECTOR_API_KEY", "replace-with-a-long-random-value")
-ADMIN_KEY = os.environ.get(
-    "COLLECTOR_SIMULATION_ADMIN_API_KEY", "replace-with-a-different-long-random-value"
-)
+DEVICE_ID = os.environ.get("COLLECTOR_TEST_DEVICE_ID", "esp32-production-01")
 
 INGESTION_COUNTER_METRICS = (
     "mqtt_messages_received_total",
@@ -111,17 +109,12 @@ def _assert_metadata(payload: Any) -> None:
     assert isinstance(payload, dict)
     assert {"captured_at", "collector_mode", "simulated", "source_host"} <= payload.keys()
     assert isinstance(payload["captured_at"], str)
-    assert isinstance(payload["collector_mode"], str)
-    assert isinstance(payload["simulated"], bool)
+    assert payload["collector_mode"] == "production"
+    assert payload["simulated"] is False
     assert isinstance(payload["source_host"], str)
     for field in ("scenario_id", "simulation_run_id", "simulation_phase"):
-        if field in payload:
-            assert _is_string_or_none(payload[field])
-    if "simulation_seed" in payload:
-        assert payload["simulation_seed"] is None or (
-            isinstance(payload["simulation_seed"], int)
-            and not isinstance(payload["simulation_seed"], bool)
-        )
+        assert payload.get(field) is None
+    assert payload.get("simulation_seed") is None
 
 
 def _assert_envelope(payload: Any) -> Any:
@@ -199,7 +192,7 @@ def assert_response_contract(path: str, payload: Any) -> None:
         if "contains" in parameters:
             contains = parameters["contains"][-1].lower()
             assert all(contains in line.lower() for line in data["lines"])
-    elif path == "/v1/devices/esp32-simulated-01":
+    elif path.startswith("/v1/devices/"):
         data = _assert_envelope(payload)
         assert isinstance(data, dict)
         assert {
@@ -236,7 +229,7 @@ def main() -> None:
         "/v1/services",
         "/v1/services/ingestion-service",
         "/v1/services/ingestion-service/logs?tail=1&contains=healthy",
-        "/v1/devices/esp32-simulated-01",
+        f"/v1/devices/{DEVICE_ID}",
     )
     for route in read_routes:
         assert_status("GET", route, 401)
@@ -245,20 +238,12 @@ def main() -> None:
     assert_status("GET", "/v1/services/not-allowed", 404, key=READ_KEY)
     assert_status("GET", "/v1/devices/not-available", 404, key=READ_KEY)
 
-    assert_status("GET", "/v1/simulation/scenarios", 401, key=READ_KEY)
-    scenarios = assert_status("GET", "/v1/simulation/scenarios", 200, key=ADMIN_KEY)
-    assert len(scenarios) == 4
-    run = assert_status(
-        "POST",
+    for path in (
+        "/v1/simulation/scenarios",
         "/v1/simulation/runs",
-        201,
-        key=ADMIN_KEY,
-        body={"scenario_id": "ingestion-backpressure", "seed": 42, "speed": 1},
-    )
-    assert run["scenario_id"] == "ingestion-backpressure"
-    assert_status("GET", "/v1/simulation/runs/current", 200, key=ADMIN_KEY)
-    assert_status("DELETE", "/v1/simulation/runs/current", 200, key=ADMIN_KEY)
-    assert_status("DELETE", "/v1/simulation/runs/current", 200, key=ADMIN_KEY)
+        "/v1/simulation/runs/current",
+    ):
+        assert_status("GET", path, 404, key=READ_KEY)
 
 
 if __name__ == "__main__":
