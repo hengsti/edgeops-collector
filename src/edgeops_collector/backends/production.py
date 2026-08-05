@@ -1,7 +1,4 @@
-from edgeops_collector.config import (
-    CollectorMode,
-    Settings,
-)
+from edgeops_collector.config import Settings
 from edgeops_collector.production.device_reader import (
     DeviceReader,
 )
@@ -37,7 +34,7 @@ class ProductionBackend:
 
     def _metadata(self) -> CaptureMetadata:
         return CaptureMetadata(
-            collector_mode=CollectorMode.PRODUCTION,
+            collector_mode="production",
             simulated=False,
             source_host=self._settings.source_host,
         )
