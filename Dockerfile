@@ -27,8 +27,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY --from=builder /opt/venv /opt/venv
-COPY config /app/config
-
 RUN useradd \
     --create-home \
     --uid 10001 \
