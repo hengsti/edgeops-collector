@@ -23,10 +23,6 @@ def envelope(data: object) -> dict[str, object]:
             "collector_mode": "production",
             "simulated": False,
             "source_host": "rpi-smarthome",
-            "scenario_id": None,
-            "simulation_run_id": None,
-            "simulation_seed": None,
-            "simulation_phase": None,
         },
         "data": data,
     }
@@ -79,16 +75,16 @@ def test_container_metric_list_matches_schema() -> None:
             envelope({"service": "ingestion-service", "lines": ["service healthy"]}),
         ),
         (
-            "/v1/devices/esp32-simulated-01",
+            "/v1/devices/esp32-production-01",
             envelope(
                 {
-                    "device_id": "esp32-simulated-01",
+                    "device_id": "esp32-production-01",
                     "available": True,
                     "last_seen": "2026-07-12T12:00:00Z",
                     "heartbeat_age_seconds": 0,
-                    "rssi_dbm": -55,
+                    "rssi_dbm": None,
                     "fw_version": None,
-                    "raw": {"sensor": "simulated"},
+                    "raw": {"sensor": {"stale": False, "last_seen_ms": 1783857600000}},
                 }
             ),
         ),

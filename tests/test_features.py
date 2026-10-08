@@ -1,11 +1,8 @@
-from datetime import UTC, datetime
 from typing import Any
 
 import pytest
 
 from edgeops_collector.features import (
-    LABELS,
-    build_training_record,
     counter_delta,
     extract_features,
     safe_divide,
@@ -51,16 +48,7 @@ def snapshot(**overrides: float) -> dict[str, Any]:
         }
     )
     data.update(overrides)
-    return {
-        "metadata": {
-            "captured_at": datetime(2024, 1, 1, tzinfo=UTC),
-            "simulation_run_id": "run-42",
-            "simulation_seed": 42,
-            "scenario_id": "ingestion-backpressure",
-            "simulation_phase": "overloaded",
-        },
-        "data": data,
-    }
+    return {"data": data}
 
 
 def test_extract_features_uses_windowed_counter_deltas() -> None:
@@ -120,38 +108,3 @@ def test_feature_helpers_handle_empty_windows_and_counter_resets() -> None:
     assert counter_delta(2, 3) == 0
     with pytest.raises(ValueError, match="greater than zero"):
         extract_features(snapshot(), snapshot(), window_seconds=0)
-
-
-def test_build_training_record_uses_stable_label_mapping() -> None:
-    current = snapshot()
-
-    record = build_training_record(current, {"queue_growth_rate": 1.5})
-
-    assert record == {
-        "timestamp": "2024-01-01T00:00:00Z",
-        "simulation_run_id": "run-42",
-        "simulation_seed": 42,
-        "scenario_id": "ingestion-backpressure",
-        "simulation_phase": "overloaded",
-        "label": "ingestion-backpressure",
-        "label_id": LABELS["ingestion-backpressure"],
-        "features": {"queue_growth_rate": 1.5},
-    }
-
-
-def test_normal_training_record_has_normal_phase_and_label() -> None:
-    current = snapshot()
-    current["metadata"].update(
-        {
-            "simulation_run_id": None,
-            "simulation_seed": None,
-            "scenario_id": None,
-            "simulation_phase": None,
-        }
-    )
-
-    record = build_training_record(current, {})
-
-    assert record["label"] == "normal"
-    assert record["label_id"] == 0
-    assert record["simulation_phase"] == "normal"

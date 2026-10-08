@@ -107,15 +107,9 @@ def test_meta_and_envelopes_have_fixed_production_provenance(client: TestClient)
     assert meta.status_code == 200
     assert meta.json()["mode"] == "production"
     metadata = metrics.json()["metadata"]
-    assert metadata == {
-        **metadata,
-        "collector_mode": "production",
-        "simulated": False,
-        "scenario_id": None,
-        "simulation_run_id": None,
-        "simulation_seed": None,
-        "simulation_phase": None,
-    }
+    assert metadata.keys() == {"captured_at", "collector_mode", "simulated", "source_host"}
+    assert metadata["collector_mode"] == "production"
+    assert metadata["simulated"] is False
 
 
 @pytest.mark.parametrize(
