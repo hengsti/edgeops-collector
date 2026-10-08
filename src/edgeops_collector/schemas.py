@@ -15,10 +15,6 @@ class CaptureMetadata(BaseModel):
     collector_mode: Literal["production"] = "production"
     simulated: Literal[False] = False
     source_host: str
-    scenario_id: str | None = None
-    simulation_run_id: str | None = None
-    simulation_seed: int | None = None
-    simulation_phase: str | None = None
 
 
 class CollectorEnvelope[T](BaseModel):
