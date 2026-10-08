@@ -17,9 +17,37 @@ uv sync --locked --dev
 uv run uvicorn edgeops_collector.main:create_app --factory --host 0.0.0.0 --port 8095
 ```
 
-Replace the example `COLLECTOR_API_KEY` before starting. Docker Compose integration is deliberately
-deferred to the later deployment phase; the collector-local legacy Compose file is not the
-authoritative production launcher.
+Replace the example `COLLECTOR_API_KEY` before starting.
+
+## Docker Compose
+
+`compose.yaml` defines the `edgeops-collector` service. It reads its settings from the untracked
+`.env` next to it and only exposes port `8095` on the Compose network.
+
+Standalone:
+
+```powershell
+Copy-Item .env.example .env
+docker compose config --quiet
+docker compose up -d --wait
+docker compose exec -T edgeops-collector python - < scripts/container_contract.py
+```
+
+In the Server stack, the stack's `docker-compose.yaml` includes this file together with the
+stack-side `edgeops-collector.override.yaml`:
+
+```yaml
+include:
+  - path:
+      - ./edgeops-ai/collector/compose.yaml
+      - ./edgeops-collector.override.yaml
+    env_file: ./.env
+```
+
+The override publishes `8095:8095` on the host and mounts the Docker socket read-only with
+`group_add: ["${DOCKER_GID}"]`, so the non-root collector can inspect the allowlisted services. Set
+`DOCKER_GID` in the stack `.env` (`getent group docker | cut -d: -f3`). Other stack services reach
+the collector at `http://edgeops-collector:8095`.
 
 ## Authentication and routes
 
@@ -61,7 +89,7 @@ most 100 characters. Services remain fail-closed behind `COLLECTOR_ALLOWED_SERVI
 | `COLLECTOR_SOURCE_HOST` | `rpi-smarthome` | Source metadata label |
 | `COLLECTOR_INGESTION_METRICS_URL` | `http://ingest:9090/metrics` | Prometheus endpoint |
 | `COLLECTOR_INGESTION_CACHE_URL` | `http://ingest:8085` | Device-cache base URL |
-| `COLLECTOR_ALLOWED_SERVICES` | Built-in list | Docker service allowlist |
+| `COLLECTOR_ALLOWED_SERVICES` | `emqx,ingest,influxdb,telegraf,grafana,device-management,control-ui,apple-homekit-api` | Docker service allowlist (Compose service names) |
 | `COLLECTOR_HTTP_TIMEOUT_SECONDS` | `5` | Upstream timeout |
 | `COLLECTOR_MAX_LOG_LINES` | `1000` | In-memory log bound |
 
