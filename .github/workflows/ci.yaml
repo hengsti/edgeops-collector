@@ -32,7 +32,8 @@ jobs:
       - run: docker compose config --quiet
       - run: docker compose build
       - run: docker compose up -d --wait --wait-timeout 90
-      - run: python scripts/container_contract.py
+      # compose.yaml only exposes 8095 on the Compose network, so probe from inside the container.
+      - run: docker compose exec -T edgeops-collector python - < scripts/container_contract.py
       - name: Verify non-root runtime user
         run: test "$(docker compose exec -T edgeops-collector id -u)" = "10001"
       - if: always()
