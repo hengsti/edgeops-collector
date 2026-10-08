@@ -225,18 +225,24 @@ def main() -> None:
 
     read_routes = (
         "/v1/meta",
-        "/v1/metrics/ingestion",
         "/v1/services",
-        "/v1/services/ingestion-service",
-        "/v1/services/ingestion-service/logs?tail=1&contains=healthy",
-        f"/v1/devices/{DEVICE_ID}",
     )
     for route in read_routes:
         assert_status("GET", route, 401)
         assert_response_contract(route, assert_status("GET", route, 200, key=READ_KEY))
 
+    # The Compose deployment runs without ingest and without a Docker socket.
+    upstream_routes = (
+        "/v1/metrics/ingestion",
+        "/v1/services/ingestion-service",
+        "/v1/services/ingestion-service/logs?tail=1&contains=healthy",
+        f"/v1/devices/{DEVICE_ID}",
+    )
+    for route in upstream_routes:
+        assert_status("GET", route, 401)
+        assert_status("GET", route, 503, key=READ_KEY)
+
     assert_status("GET", "/v1/services/not-allowed", 404, key=READ_KEY)
-    assert_status("GET", "/v1/devices/not-available", 404, key=READ_KEY)
 
     for path in (
         "/v1/simulation/scenarios",
