@@ -41,12 +41,10 @@ Every data envelope has fixed provenance:
 ```json
 {
   "metadata": {
+    "captured_at": "2026-07-12T12:00:00Z",
     "collector_mode": "production",
     "simulated": false,
-    "scenario_id": null,
-    "simulation_run_id": null,
-    "simulation_seed": null,
-    "simulation_phase": null
+    "source_host": "rpi-smarthome"
   },
   "data": {}
 }
