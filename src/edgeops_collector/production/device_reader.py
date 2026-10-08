@@ -11,18 +11,27 @@ from edgeops_collector.errors import (
 from edgeops_collector.schemas import DeviceState
 
 
+def _parse_last_seen_ms(value: object) -> datetime | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+
+    try:
+        return datetime.fromtimestamp(value / 1000, tz=UTC)
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
 class DeviceReader:
     def __init__(
         self,
         *,
         base_url: str,
         timeout_seconds: float,
+        client: httpx.AsyncClient | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
-
-        self._client = httpx.AsyncClient(
-            timeout=timeout_seconds,
-        )
+        self._client = client or httpx.AsyncClient(timeout=timeout_seconds)
+        self._owns_client = client is None
 
     async def read(
         self,
@@ -48,45 +57,18 @@ class DeviceReader:
                 f"Invalid JSON device-state response for {device_id}"
             ) from exc
 
-        state_candidate = payload.get("state", payload)
-
-        if not isinstance(state_candidate, dict):
+        if not isinstance(payload, dict):
             raise InvalidUpstreamResponseError(f"Device state for {device_id} is not an object")
 
-        state: dict[str, Any] = state_candidate
+        sensor = payload.get("sensor")
 
-        status_candidate = state.get("status", {})
+        if sensor is None:
+            return DeviceState(device_id=device_id, available=False, raw=payload)
 
-        status_data: dict[str, Any] = status_candidate if isinstance(status_candidate, dict) else {}
+        if not isinstance(sensor, dict):
+            raise InvalidUpstreamResponseError(f"Sensor state for {device_id} is not an object")
 
-        last_seen_raw = (
-            state.get("last_seen") or state.get("time_iso") or status_data.get("time_iso")
-        )
-
-        last_seen: datetime | None = None
-
-        if isinstance(last_seen_raw, str):
-            try:
-                last_seen = datetime.fromisoformat(
-                    last_seen_raw.replace(
-                        "Z",
-                        "+00:00",
-                    )
-                )
-            except ValueError:
-                last_seen = None
-
-        if last_seen is not None and last_seen.tzinfo is None:
-            last_seen = last_seen.replace(tzinfo=UTC)
-
-        rssi = status_data.get("rssi") or status_data.get("rssi_dbm") or state.get("rssi")
-
-        rssi_dbm: int | None = None
-
-        if isinstance(rssi, int | float):
-            rssi_dbm = int(rssi)
-
-        fw_version = state.get("fw_version")
+        last_seen = _parse_last_seen_ms(sensor.get("last_seen_ms"))
         heartbeat_age_seconds = (
             max(0.0, (datetime.now(UTC) - last_seen).total_seconds())
             if last_seen is not None
@@ -95,13 +77,12 @@ class DeviceReader:
 
         return DeviceState(
             device_id=device_id,
-            available=True,
+            available=not sensor.get("stale", False),
             last_seen=last_seen,
             heartbeat_age_seconds=heartbeat_age_seconds,
-            rssi_dbm=rssi_dbm,
-            fw_version=(str(fw_version) if fw_version is not None else None),
             raw=payload,
         )
 
     async def close(self) -> None:
-        await self._client.aclose()
+        if self._owns_client:
+            await self._client.aclose()
