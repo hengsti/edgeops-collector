@@ -107,14 +107,11 @@ def _is_string_or_none(value: Any) -> bool:
 
 def _assert_metadata(payload: Any) -> None:
     assert isinstance(payload, dict)
-    assert {"captured_at", "collector_mode", "simulated", "source_host"} <= payload.keys()
+    assert payload.keys() == {"captured_at", "collector_mode", "simulated", "source_host"}
     assert isinstance(payload["captured_at"], str)
     assert payload["collector_mode"] == "production"
     assert payload["simulated"] is False
     assert isinstance(payload["source_host"], str)
-    for field in ("scenario_id", "simulation_run_id", "simulation_phase"):
-        assert payload.get(field) is None
-    assert payload.get("simulation_seed") is None
 
 
 def _assert_envelope(payload: Any) -> Any:
