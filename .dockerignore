@@ -1,10 +1,24 @@
 .git
 .github
+.vscode
+.env
+tests
+
+# Local environments and caches
 .venv
+.uv-cache
 .pytest_cache
 .mypy_cache
 .ruff_cache
-__pycache__
-.env
-tests
-fix-plan.md
+**/__pycache__
+**/*.py[cod]
+
+# Test and build output
+.test-tmp
+.build-split
+dist
+build
+*.egg-info
+coverage.xml
+htmlcov
+.coverage
