@@ -8,8 +8,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    ports:
-      - "8095:8095"
+    expose:
+      - "8095"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8095/health', timeout=2)"]
       interval: 5s
