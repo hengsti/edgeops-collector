@@ -1,20 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import datetime
 from typing import Any, Final
 
 from edgeops_collector.schemas import INGESTION_COUNTER_NAMES
 
 COUNTER_KEYS: Final = tuple(sorted(INGESTION_COUNTER_NAMES))
-
-LABELS: Final = {
-    "normal": 0,
-    "influxdb-write-failure": 1,
-    "ingestion-backpressure": 2,
-    "malformed-sensor-payload": 3,
-    "missing-device-heartbeat": 4,
-}
 
 
 def safe_divide(
@@ -210,30 +201,3 @@ def extract_features(
         )
 
     return features
-
-
-def build_training_record(
-    current: Mapping[str, Any],
-    features: Mapping[str, float],
-) -> dict[str, Any]:
-    """Combine snapshot provenance and extracted features into one labeled row."""
-    metadata = current["metadata"]
-    scenario_id = metadata.get("scenario_id")
-    label = str(scenario_id) if scenario_id is not None else "normal"
-    if label not in LABELS:
-        raise ValueError(f"Unsupported training label: {label}")
-
-    timestamp = metadata["captured_at"]
-    if isinstance(timestamp, datetime):
-        timestamp = timestamp.isoformat().replace("+00:00", "Z")
-
-    return {
-        "timestamp": timestamp,
-        "simulation_run_id": metadata.get("simulation_run_id"),
-        "simulation_seed": metadata.get("simulation_seed"),
-        "scenario_id": scenario_id,
-        "simulation_phase": metadata.get("simulation_phase") or "normal",
-        "label": label,
-        "label_id": LABELS[label],
-        "features": dict(features),
-    }
