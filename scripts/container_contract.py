@@ -231,8 +231,8 @@ def main() -> None:
     # The Compose deployment runs without ingest and without a Docker socket.
     upstream_routes = (
         "/v1/metrics/ingestion",
-        "/v1/services/ingestion-service",
-        "/v1/services/ingestion-service/logs?tail=1&contains=healthy",
+        "/v1/services/ingest",
+        "/v1/services/ingest/logs?tail=1&contains=healthy",
         f"/v1/devices/{DEVICE_ID}",
     )
     for route in upstream_routes:
