@@ -81,3 +81,7 @@ uv run ruff check .
 uv run ruff format --check .
 uv run pytest
 ```
+
+## License
+
+Released under the [MIT License](LICENSE).
