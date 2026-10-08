@@ -21,14 +21,7 @@ class Settings(BaseSettings):
     ingestion_cache_url: str = "http://ingest:8085"
 
     allowed_services: str = (
-        "nanomq,"
-        "ingestion-service,"
-        "influxdb,"
-        "telegraf,"
-        "grafana,"
-        "device-management,"
-        "control-ui,"
-        "homekit-api"
+        "emqx,ingest,influxdb,telegraf,grafana,device-management,control-ui,apple-homekit-api"
     )
 
     http_timeout_seconds: float = Field(
