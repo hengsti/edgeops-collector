@@ -26,6 +26,28 @@ def test_settings_load_from_dotenv() -> None:
     assert settings.source_host == "dotenv-host"
 
 
+def test_default_allowlist_matches_server_stack_service_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("COLLECTOR_API_KEY", "environment-secret")
+    monkeypatch.delenv("COLLECTOR_ALLOWED_SERVICES", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.allowed_service_names == frozenset(
+        {
+            "emqx",
+            "ingest",
+            "influxdb",
+            "telegraf",
+            "grafana",
+            "device-management",
+            "control-ui",
+            "apple-homekit-api",
+        }
+    )
+
+
 def test_unknown_collector_environment_name_is_rejected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
