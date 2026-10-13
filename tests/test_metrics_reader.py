@@ -1,5 +1,6 @@
 import httpx
 import pytest
+from pydantic import ValidationError
 
 from edgeops_collector.errors import InvalidUpstreamResponseError
 from edgeops_collector.production.metrics_reader import (
@@ -8,7 +9,7 @@ from edgeops_collector.production.metrics_reader import (
     RAW_TO_CANONICAL,
     MetricsReader,
 )
-from edgeops_collector.schemas import IngestionMetrics
+from edgeops_collector.schemas import INGESTION_COUNTER_NAMES, IngestionMetrics
 
 
 def metrics_text(
@@ -38,6 +39,29 @@ def test_reader_mapping_covers_the_production_schema() -> None:
     }
 
     assert canonical_metrics == production_fields
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("mqtt_messages_received_total", -1),
+        ("ingest_transform_failed_total", None),
+        ("ingest_queue_depth", -1),
+        ("ingest_queue_capacity", 0),
+        ("wal_forwarder_retry_outage_active", 2),
+        ("influxdb_healthy", 2),
+    ],
+)
+def test_metric_schema_preserves_validation_constraints(name: str, value: object) -> None:
+    values: dict[str, object] = dict.fromkeys(INGESTION_COUNTER_NAMES, 0.0)
+    values["influxdb_healthy"] = 1.0
+    IngestionMetrics.model_validate(values)
+    values[name] = value
+
+    with pytest.raises(ValidationError) as error:
+        IngestionMetrics.model_validate(values)
+
+    assert error.value.errors()[0]["loc"] == (name,)
 
 
 async def test_reader_maps_full_ingestion_contract_and_aggregates_labels() -> None:
