@@ -7,6 +7,37 @@ the stable collector read API on port `8095`.
 Simulation is intentionally not part of this project. It lives in the independent sibling project
 `edgeops-collector-simulation`. The production API does not register `/v1/simulation/*`.
 
+## Architecture
+
+The collector collects and normalizes telemetry. The AI service owns observation windows,
+feature calculations, and predictions.
+
+```mermaid
+flowchart LR
+    HTTP[HTTP client] --> API[api.py: routes and HTTP errors]
+    API --> Backend[ProductionBackend: collection and provenance]
+    Backend --> Metrics[MetricsReader]
+    Backend --> Devices[DeviceReader]
+    Backend --> Docker[DockerReader]
+    Metrics --> Prometheus[Ingestion metrics]
+    Devices --> Cache[Ingestion device cache]
+    Docker --> Engine[Docker API]
+```
+
+- `main.py` builds the application and owns resources for its lifespan. One HTTP client
+  is shared by both ingestion readers and always closed on shutdown.
+- `api.py` applies authentication to the `/v1` router, validates request parameters, and
+  translates collector errors to HTTP responses. `/health` remains public.
+- `backends/base.py` defines the small interface used by the API. `backends/production.py`
+  coordinates readers and attaches capture metadata; it does not depend on application settings.
+- `production/` contains upstream I/O and normalization. Docker lookup uses a sparse list
+  followed by one inspection, including stopped containers and current health information.
+- `schemas.py` defines the response contract and metric inventory; the metrics reader keeps
+  upstream aliases, aggregation rules, and zero defaults explicit.
+- `config.py` validates configuration, and `security.py` verifies the read key.
+
+See [the refactoring record](docs/refactoring-2026-10-12.md) for the changes and validation.
+
 ## Local development
 
 You need Python 3.12 or newer and `uv`.
