@@ -34,7 +34,9 @@ flowchart LR
 - `production/` contains upstream I/O and normalization. Docker lookup uses a sparse list
   followed by one inspection, including stopped containers and current health information.
 - `schemas.py` defines the response contract and metric inventory; the metrics reader keeps
-  upstream aliases, aggregation rules, and zero defaults explicit.
+  aggregation rules explicit. Each metric field declares its kind, upstream alias, and handling
+  when absent through `Metric` metadata. The reader and container contract derive their inventories
+  from these declarations, so adding a metric only requires adding its field to `IngestionMetrics`.
 - `config.py` validates configuration, and `security.py` verifies the read key.
 
 See [the refactoring record](docs/refactoring-2026-10-12.md) for the changes and validation.
