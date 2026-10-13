@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -35,7 +36,7 @@ class DeviceReader:
         self,
         device_id: str,
     ) -> DeviceState:
-        url = f"{self._base_url}/v1/state/{device_id}"
+        url = f"{self._base_url}/v1/state/{quote(device_id, safe='')}"
 
         try:
             response = await self._client.get(url)
@@ -66,6 +67,12 @@ class DeviceReader:
         if not isinstance(sensor, dict):
             raise InvalidUpstreamResponseError(f"Sensor state for {device_id} is not an object")
 
+        stale = sensor.get("stale")
+        if not isinstance(stale, bool):
+            raise InvalidUpstreamResponseError(
+                f"Sensor stale flag for {device_id} is not a boolean"
+            )
+
         last_seen = _parse_last_seen_ms(sensor.get("last_seen_ms"))
         heartbeat_age_seconds = (
             max(0.0, (datetime.now(UTC) - last_seen).total_seconds())
@@ -75,7 +82,7 @@ class DeviceReader:
 
         return DeviceState(
             device_id=device_id,
-            available=not sensor.get("stale", False),
+            available=not stale,
             last_seen=last_seen,
             heartbeat_age_seconds=heartbeat_age_seconds,
             raw=payload,
