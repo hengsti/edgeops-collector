@@ -15,7 +15,6 @@ async def read_state(payload: dict[str, Any]) -> DeviceState:
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         return await DeviceReader(
             base_url="http://ingestion.test/",
-            timeout_seconds=1,
             client=client,
         ).read("esp32-1")
 

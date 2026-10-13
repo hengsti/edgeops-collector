@@ -69,7 +69,6 @@ async def test_reader_maps_full_ingestion_contract_and_aggregates_labels() -> No
     async with mock_client(body) as client:
         result = await MetricsReader(
             url="http://ingestion.test/metrics",
-            timeout_seconds=1,
             client=client,
         ).read()
 
@@ -86,7 +85,6 @@ async def test_reader_defaults_never_emitted_failure_metrics_to_zero() -> None:
     async with mock_client(metrics_text(omit=OPTIONAL_ZERO_METRICS)) as client:
         result = await MetricsReader(
             url="http://ingestion.test/metrics",
-            timeout_seconds=1,
             client=client,
         ).read()
 
@@ -104,7 +102,6 @@ async def test_reader_rejects_missing_required_denominator() -> None:
     async with mock_client(body) as client:
         reader = MetricsReader(
             url="http://ingestion.test/metrics",
-            timeout_seconds=1,
             client=client,
         )
         with pytest.raises(
@@ -120,7 +117,6 @@ async def test_reader_rejects_negative_metric() -> None:
     async with mock_client(body) as client:
         reader = MetricsReader(
             url="http://ingestion.test/metrics",
-            timeout_seconds=1,
             client=client,
         )
         with pytest.raises(
