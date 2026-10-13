@@ -183,20 +183,38 @@ def test_every_read_route_rejects_missing_wrong_and_query_only_keys(
 
 
 @pytest.mark.parametrize(
-    ("error", "expected_status"),
+    ("error", "expected_status", "expected_detail"),
     [
-        (ResourceNotFoundError("not found"), 404),
-        (UpstreamUnavailableError("unavailable"), 503),
-        (InvalidUpstreamResponseError("invalid payload"), 502),
-        (CollectorError("collector failed"), 502),
+        (
+            ResourceNotFoundError("Missing resource at http://internal.test"),
+            404,
+            "Resource not found",
+        ),
+        (
+            UpstreamUnavailableError("Failed to fetch http://internal.test"),
+            503,
+            "Upstream unavailable",
+        ),
+        (
+            InvalidUpstreamResponseError("Invalid payload from http://internal.test"),
+            502,
+            "Invalid upstream response",
+        ),
+        (
+            CollectorError("Collector failed at http://internal.test"),
+            502,
+            "Invalid upstream response",
+        ),
     ],
 )
-def test_collector_errors_keep_the_http_contract(
+def test_collector_errors_hide_internal_details_and_log_context(
     client: TestClient,
     backend: FakeProductionBackend,
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
     error: CollectorError,
     expected_status: int,
+    expected_detail: str,
 ) -> None:
     async def fail() -> CollectorEnvelope[IngestionMetrics]:
         raise error
@@ -205,7 +223,41 @@ def test_collector_errors_keep_the_http_contract(
     response = client.get("/v1/metrics/ingestion", headers={"X-EdgeOps-Key": "production-test-key"})
 
     assert response.status_code == expected_status
-    assert response.json() == {"detail": str(error)}
+    assert response.json() == {"detail": expected_detail}
+    assert "internal.test" not in response.text
+    assert str(error) in caplog.text
+    assert any(record.exc_info for record in caplog.records)
+
+
+@pytest.mark.parametrize(
+    "device_id",
+    [
+        "esp32%3Fadmin%3Dtrue",
+        "esp32%23fragment",
+        "%252Fother",
+        "room%2Fbed",
+        "%2E%2E",
+        "a.b",
+        "a%20b",
+        "a" * 65,
+    ],
+)
+def test_invalid_device_id_never_reaches_the_backend(
+    client: TestClient,
+    backend: FakeProductionBackend,
+    monkeypatch: pytest.MonkeyPatch,
+    device_id: str,
+) -> None:
+    async def fail(device_id: str) -> CollectorEnvelope[DeviceState]:
+        raise AssertionError("Invalid device ID reached the backend")
+
+    monkeypatch.setattr(backend, "get_device", fail)
+
+    response = client.get(
+        f"/v1/devices/{device_id}", headers={"X-EdgeOps-Key": "production-test-key"}
+    )
+
+    assert response.status_code in {404, 422}
 
 
 @pytest.fixture
@@ -245,6 +297,19 @@ def test_production_uses_one_http_client_owned_by_the_lifespan(
         assert len(http_clients) == 1
 
     assert http_clients[0].is_closed is True
+
+
+@pytest.mark.parametrize("device_id", ["a", "ESP32_room-1", "a" * 64])
+def test_valid_device_ids_are_accepted(
+    settings: Settings, http_clients: list[httpx.AsyncClient], device_id: str
+) -> None:
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.get(
+            f"/v1/devices/{device_id}", headers={"X-EdgeOps-Key": "production-test-key"}
+        )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["device_id"] == device_id
 
 
 def test_injected_backend_creates_no_http_clients(

@@ -96,3 +96,36 @@ async def test_invalid_json_is_rejected(body: str) -> None:
 
         with pytest.raises(InvalidUpstreamResponseError, match="Invalid JSON"):
             await reader.read("esp32-1")
+
+
+@pytest.mark.parametrize("stale", [None, 0, 1, "false", "true", [], {}])
+async def test_non_boolean_stale_is_rejected(stale: object) -> None:
+    with pytest.raises(InvalidUpstreamResponseError, match="stale"):
+        await read_state({"sensor": {"stale": stale}})
+
+
+async def test_missing_stale_is_rejected() -> None:
+    with pytest.raises(InvalidUpstreamResponseError, match="stale"):
+        await read_state({"sensor": {}})
+
+
+@pytest.mark.parametrize(
+    ("device_id", "expected_path"),
+    [
+        ("esp32?admin=true", b"/v1/state/esp32%3Fadmin%3Dtrue"),
+        ("esp32#fragment", b"/v1/state/esp32%23fragment"),
+        ("%2Fother", b"/v1/state/%252Fother"),
+        ("room/bed", b"/v1/state/room%2Fbed"),
+    ],
+)
+async def test_device_id_is_encoded_as_one_path_segment(
+    device_id: str, expected_path: bytes
+) -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        assert request.url.raw_path == expected_path
+        return httpx.Response(200, json={"sensor": None})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        result = await DeviceReader(base_url="http://ingestion.test", client=client).read(device_id)
+
+    assert result.device_id == device_id
