@@ -1,4 +1,3 @@
-from edgeops_collector.config import Settings
 from edgeops_collector.production.device_reader import (
     DeviceReader,
 )
@@ -22,12 +21,12 @@ class ProductionBackend:
     def __init__(
         self,
         *,
-        settings: Settings,
+        source_host: str,
         metrics_reader: MetricsReader,
         docker_reader: DockerReader,
         device_reader: DeviceReader,
     ) -> None:
-        self._settings = settings
+        self._source_host = source_host
         self._metrics_reader = metrics_reader
         self._docker_reader = docker_reader
         self._device_reader = device_reader
@@ -36,7 +35,7 @@ class ProductionBackend:
         return CaptureMetadata(
             collector_mode="production",
             simulated=False,
-            source_host=self._settings.source_host,
+            source_host=self._source_host,
         )
 
     async def get_ingestion_metrics(
@@ -90,6 +89,4 @@ class ProductionBackend:
         )
 
     async def close(self) -> None:
-        await self._metrics_reader.close()
-        await self._device_reader.close()
         await self._docker_reader.close()
