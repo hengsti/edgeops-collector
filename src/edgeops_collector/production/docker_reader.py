@@ -54,6 +54,7 @@ class DockerReader:
 
             containers = client.containers.list(
                 all=True,
+                sparse=True,
                 filters={"label": (f"com.docker.compose.service={service}")},
             )
         except DockerException as exc:

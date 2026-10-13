@@ -26,12 +26,10 @@ class DeviceReader:
         self,
         *,
         base_url: str,
-        timeout_seconds: float,
-        client: httpx.AsyncClient | None = None,
+        client: httpx.AsyncClient,
     ) -> None:
         self._base_url = base_url.rstrip("/")
-        self._client = client or httpx.AsyncClient(timeout=timeout_seconds)
-        self._owns_client = client is None
+        self._client = client
 
     async def read(
         self,
@@ -82,7 +80,3 @@ class DeviceReader:
             heartbeat_age_seconds=heartbeat_age_seconds,
             raw=payload,
         )
-
-    async def close(self) -> None:
-        if self._owns_client:
-            await self._client.aclose()
