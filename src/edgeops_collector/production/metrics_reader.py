@@ -7,55 +7,29 @@ from edgeops_collector.errors import (
     InvalidUpstreamResponseError,
     UpstreamUnavailableError,
 )
-from edgeops_collector.schemas import INGESTION_COUNTER_NAMES, IngestionMetrics
+from edgeops_collector.schemas import METRICS, IngestionMetrics
 
 RAW_TO_CANONICAL = {
-    "ingest_queue_full_total": "ingest_wal_queue_full_total",
-    "influx_write_errors_total": "influx_write_failed_total",
+    metric.raw_name: name for name, metric in METRICS.items() if metric.raw_name is not None
 }
-CANONICAL_TO_RAW = {canonical: raw for raw, canonical in RAW_TO_CANONICAL.items()}
 RAW_COUNTER_METRICS = frozenset(
-    CANONICAL_TO_RAW.get(name, name) for name in INGESTION_COUNTER_NAMES
+    metric.raw_name or name
+    for name, metric in METRICS.items()
+    if metric.exported and metric.kind == "counter"
 )
 
 RAW_GAUGE_METRICS = frozenset(
-    {
-        "wal_forwarder_retry_outage_active",
-    }
+    metric.raw_name or name
+    for name, metric in METRICS.items()
+    if metric.exported and metric.kind == "gauge"
 )
 
 RAW_METRICS = RAW_COUNTER_METRICS | RAW_GAUGE_METRICS
 
-# The Rust metrics recorder may omit counters that have never been incremented.
 OPTIONAL_ZERO_METRICS = frozenset(
-    {
-        "ingest_event_queue_full_total",
-        "ingest_incoming_oversized_total",
-        "ingest_incoming_non_utf8_total",
-        "ingest_incoming_invalid_json_total",
-        "ingest_validate_raw_ignored_total",
-        "ingest_validate_raw_failed_total",
-        "ingest_transform_failed_total",
-        "ingest_transform_deserialize_failed_total",
-        "ingest_transform_ignored_total",
-        "ingest_validate_business_failed_total",
-        "ingest_queue_full_total",
-        "ingest_queue_closed_total",
-        "ingest_durability_ack_failed_total",
-        "dlq_messages_published_total",
-        "dlq_publish_errors_total",
-        "ingest_dlq_publish_duration_seconds_sum",
-        "ingest_dlq_publish_duration_seconds_count",
-        "influx_write_errors_total",
-        "wal_forwarder_drop_total",
-        "wal_forwarder_retry_total",
-        "wal_forwarder_commit_retry_total",
-        "wal_forwarder_retry_outage_seconds_sum",
-        "wal_forwarder_retry_outage_seconds_count",
-        "wal_forwarder_retry_outage_active",
-        "wal_subscription_corrupt_skipped_total",
-        "wal_writer_fatal_total",
-    }
+    metric.raw_name or name
+    for name, metric in METRICS.items()
+    if metric.exported and metric.optional_zero
 )
 
 REQUIRED_RAW_METRICS = RAW_METRICS - OPTIONAL_ZERO_METRICS
