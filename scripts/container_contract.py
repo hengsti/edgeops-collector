@@ -4,8 +4,13 @@ import json
 import os
 import urllib.error
 import urllib.request
+from contextlib import closing
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs
+
+import docker
+from docker.errors import APIError
 
 BASE_URL = os.environ.get("COLLECTOR_TEST_URL", "http://127.0.0.1:8095")
 READ_KEY = os.environ.get("COLLECTOR_API_KEY", "replace-with-a-long-random-value")
@@ -228,16 +233,41 @@ def main() -> None:
         assert_status("GET", route, 401)
         assert_response_contract(route, assert_status("GET", route, 200, key=READ_KEY))
 
-    # The Compose deployment runs without ingest and without a Docker socket.
     upstream_routes = (
         "/v1/metrics/ingestion",
-        "/v1/services/ingest",
-        "/v1/services/ingest/logs?tail=1&contains=healthy",
         f"/v1/devices/{DEVICE_ID}",
     )
     for route in upstream_routes:
         assert_status("GET", route, 401)
         assert_status("GET", route, 503, key=READ_KEY)
+
+    for route in ("/v1/services/ingest", "/v1/services/ingest/logs?tail=1&contains=healthy"):
+        assert_status("GET", route, 401)
+        assert_status("GET", route, 404, key=READ_KEY)
+
+    assert not Path("/var/run/docker.sock").exists()
+    with closing(docker.from_env()) as client:
+        containers = client.containers.list(
+            all=True, sparse=True, filters={"id": os.environ["HOSTNAME"]}
+        )
+        assert len(containers) == 1
+        container = containers[0]
+        container.reload()
+        assert container.status == "running"
+        assert isinstance(container.logs(tail=1), bytes)
+        for operation in (
+            lambda: client.api.start("edgeops-proxy-denied"),
+            client.api.info,
+            client.api.images,
+            client.api.networks,
+        ):
+            try:
+                operation()
+            except APIError as exc:
+                assert exc.response is not None
+                assert exc.response.status_code == 403
+            else:
+                raise AssertionError("Docker proxy accepted a forbidden request")
 
     assert_status("GET", "/v1/services/not-allowed", 404, key=READ_KEY)
 
