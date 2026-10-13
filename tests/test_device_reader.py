@@ -1,16 +1,18 @@
+import json
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 import httpx
+import pytest
 
+from edgeops_collector.errors import InvalidUpstreamResponseError
 from edgeops_collector.production.device_reader import DeviceReader
 from edgeops_collector.schemas import DeviceState
 
 
-async def read_state(payload: dict[str, Any]) -> DeviceState:
+async def read_state(payload: object) -> DeviceState:
     def respond(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/v1/state/esp32-1"
-        return httpx.Response(200, json=payload, request=request)
+        return httpx.Response(200, text=json.dumps(payload), request=request)
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         return await DeviceReader(
@@ -77,3 +79,20 @@ async def test_invalid_last_seen_yields_unknown_heartbeat_age() -> None:
     assert result.available is True
     assert result.last_seen is None
     assert result.heartbeat_age_seconds is None
+
+
+@pytest.mark.parametrize("payload", [None, [], True, 123, "invalid", {"sensor": []}, {"sensor": 1}])
+async def test_non_object_state_or_sensor_is_rejected(payload: object) -> None:
+    with pytest.raises(InvalidUpstreamResponseError, match="not an object"):
+        await read_state(payload)
+
+
+@pytest.mark.parametrize("body", ["", "{", "not-json"])
+async def test_invalid_json_is_rejected(body: str) -> None:
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, text=body))
+    ) as client:
+        reader = DeviceReader(base_url="http://ingestion.test", client=client)
+
+        with pytest.raises(InvalidUpstreamResponseError, match="Invalid JSON"):
+            await reader.read("esp32-1")

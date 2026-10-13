@@ -14,7 +14,7 @@ from edgeops_collector.schemas import IngestionMetrics
 def metrics_text(
     *,
     omit: frozenset[str] = frozenset(),
-    values: dict[str, float] | None = None,
+    values: dict[str, float | str] | None = None,
 ) -> str:
     selected = values or {}
     return "\n".join(
@@ -111,8 +111,9 @@ async def test_reader_rejects_missing_required_denominator() -> None:
             await reader.read()
 
 
-async def test_reader_rejects_negative_metric() -> None:
-    body = metrics_text(values={"mqtt_messages_received_total": -1.0})
+@pytest.mark.parametrize("value", [-1.0, float("nan"), float("inf"), -float("inf"), "invalid"])
+async def test_reader_rejects_invalid_metric(value: float | str) -> None:
+    body = metrics_text(values={"mqtt_messages_received_total": value})
 
     async with mock_client(body) as client:
         reader = MetricsReader(
