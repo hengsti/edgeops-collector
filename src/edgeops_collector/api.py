@@ -1,6 +1,7 @@
+import logging
 from typing import Annotated, cast
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Path, Query, Request
 from fastapi.responses import JSONResponse
 
 from edgeops_collector import __version__
@@ -17,6 +18,8 @@ from edgeops_collector.schemas import (
 )
 from edgeops_collector.security import build_api_key_dependency
 
+logger = logging.getLogger(__name__)
+
 
 def get_backend(request: Request) -> CollectorBackend:
     return cast(CollectorBackend, request.app.state.collector_backend)
@@ -26,13 +29,17 @@ Backend = Annotated[CollectorBackend, Depends(get_backend)]
 
 
 async def collector_error_handler(_: Request, error: Exception) -> JSONResponse:
+    logger.warning("Collector request failed", exc_info=error)
     if isinstance(error, ResourceNotFoundError):
         status_code = 404
+        detail = "Resource not found"
     elif isinstance(error, UpstreamUnavailableError):
         status_code = 503
+        detail = "Upstream unavailable"
     else:
         status_code = 502
-    return JSONResponse(status_code=status_code, content={"detail": str(error)})
+        detail = "Invalid upstream response"
+    return JSONResponse(status_code=status_code, content={"detail": detail})
 
 
 def create_read_router(settings: Settings) -> APIRouter:
@@ -69,7 +76,9 @@ def create_read_router(settings: Settings) -> APIRouter:
         return await backend.get_service_logs(service, tail=tail, contains=contains)
 
     @router.get("/devices/{device_id}")
-    async def device_state(device_id: str, backend: Backend) -> CollectorEnvelope[DeviceState]:
+    async def device_state(
+        device_id: Annotated[str, Path(pattern=r"^[A-Za-z0-9_-]{1,64}$")], backend: Backend
+    ) -> CollectorEnvelope[DeviceState]:
         return await backend.get_device(device_id)
 
     return router
