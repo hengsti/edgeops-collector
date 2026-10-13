@@ -8,6 +8,14 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
+    depends_on:
+      docker-socket-proxy:
+        condition: service_healthy
+    networks:
+      - default
+      - docker-api
     expose:
       - "8095"
     healthcheck:
@@ -16,3 +24,34 @@ services:
       timeout: 3s
       retries: 12
       start_period: 5s
+
+  docker-socket-proxy:
+    image: lscr.io/linuxserver/socket-proxy:latest@sha256:8c059dcb7f496212967dcf1d4136f727f2a23eea4da881945c12b1414aafdf4c
+    restart: unless-stopped
+    environment:
+      CONTAINERS: "1"
+      ALLOW_LOGS: "1"
+      VERSION: "1"
+      POST: "0"
+      EVENTS: "0"
+      PING: "0"
+      LIBPOD_PING: "0"
+      LIBPOD_VERSION: "0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-api
+    read_only: true
+    tmpfs:
+      - /run
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2375/version"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+networks:
+  default:
+  docker-api:
+    internal: true
