@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+from contextlib import ExitStack, closing
 
 import docker
 from docker.client import DockerClient
 from docker.errors import DockerException
 from docker.models.containers import Container
+from requests.exceptions import RequestException
 
 from edgeops_collector.errors import (
     ResourceNotFoundError,
@@ -15,6 +18,8 @@ from edgeops_collector.schemas import (
     ServiceLogs,
     ServiceState,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class DockerReader:
@@ -28,6 +33,7 @@ class DockerReader:
         self._max_log_lines = max_log_lines
 
         self._docker_client: DockerClient | None = None
+        self._docker_resources = ExitStack()
 
     def _validate_service(self, service: str) -> None:
         if service not in self._allowed_services:
@@ -38,9 +44,9 @@ class DockerReader:
             return self._docker_client
 
         try:
-            self._docker_client = docker.from_env()
+            self._docker_client = self._docker_resources.enter_context(closing(docker.from_env()))
             return self._docker_client
-        except DockerException as exc:
+        except (DockerException, RequestException) as exc:
             raise UpstreamUnavailableError("Docker API is unavailable") from exc
 
     def _find_container_sync(
@@ -57,7 +63,7 @@ class DockerReader:
                 sparse=True,
                 filters={"label": (f"com.docker.compose.service={service}")},
             )
-        except DockerException as exc:
+        except (DockerException, RequestException) as exc:
             raise UpstreamUnavailableError("Docker API request failed") from exc
 
         if not containers:
@@ -78,7 +84,7 @@ class DockerReader:
 
         try:
             container.reload()
-        except DockerException as exc:
+        except (DockerException, RequestException) as exc:
             raise UpstreamUnavailableError(
                 f"Unable to refresh container for service: {service}"
             ) from exc
@@ -100,10 +106,16 @@ class DockerReader:
         self,
         service: str,
     ) -> ServiceState:
-        return await asyncio.to_thread(
-            self._get_service_sync,
-            service,
-        )
+        try:
+            return await asyncio.to_thread(
+                self._get_service_sync,
+                service,
+            )
+        except (ResourceNotFoundError, UpstreamUnavailableError):
+            raise
+        except Exception:
+            logger.exception("Failed to read Docker state for service: %s", service)
+            raise
 
     async def _get_service_or_unavailable(
         self,
@@ -111,7 +123,7 @@ class DockerReader:
     ) -> ServiceState:
         try:
             return await self.get_service(service)
-        except Exception:
+        except (ResourceNotFoundError, UpstreamUnavailableError):
             return ServiceState(
                 service=service,
                 container_id=None,
@@ -151,7 +163,7 @@ class DockerReader:
                 "utf-8",
                 errors="replace",
             )
-        except DockerException as exc:
+        except (DockerException, RequestException) as exc:
             raise UpstreamUnavailableError(f"Unable to read logs for service: {service}") from exc
 
         lines = raw.splitlines()
@@ -184,6 +196,7 @@ class DockerReader:
         if self._docker_client is None:
             return
 
-        await asyncio.to_thread(self._docker_client.close)
-
-        self._docker_client = None
+        try:
+            await asyncio.to_thread(self._docker_resources.close)
+        finally:
+            self._docker_client = None
